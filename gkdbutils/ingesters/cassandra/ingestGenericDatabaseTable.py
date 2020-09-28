@@ -168,7 +168,7 @@ def ingestData(options, inputFiles):
           'keyspace': keyspace,
           'hostname': hostname}
 
-    currentDate = datetime.datetime.now().strftime("%Y:%m:%d:%H:%M:%S")
+    currentDate = datetime.now().strftime("%Y:%m:%d:%H:%M:%S")
     (year, month, day, hour, min, sec) = currentDate.split(':')
     dateAndTime = "%s%s%s_%s%s%s" % (year, month, day, hour, min, sec)
 
@@ -229,9 +229,9 @@ def ingestData(options, inputFiles):
         if len(data) > 0:
             nProcessors, listChunks = splitList(data, bins = nprocesses, preserveOrder=True)
     
-            print("%s Parallel Processing..." % (datetime.datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
+            print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
             parallelProcess(db, dateAndTime, nProcessors, listChunks, workerInsert, miscParameters = [options], drainQueues = False)
-            print("%s Done Parallel Processing" % (datetime.datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
+            print("%s Done Parallel Processing" % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
 
 
     
@@ -250,15 +250,15 @@ def workerIngest(num, db, objectListFragment, dateAndTime, firstPass, miscParame
 
 def ingestDataMultiprocess(options):
 
-    currentDate = datetime.datetime.now().strftime("%Y:%m:%d:%H:%M:%S")
+    currentDate = datetime.now().strftime("%Y:%m:%d:%H:%M:%S")
     (year, month, day, hour, min, sec) = currentDate.split(':')
     dateAndTime = "%s%s%s_%s%s%s" % (year, month, day, hour, min, sec)
 
     nProcessors, fileSublist = splitList(options.inputFile, bins = int(options.nprocesses), preserveOrder=True)
     
-    print("%s Parallel Processing..." % (datetime.datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
+    print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
     parallelProcess([], dateAndTime, nProcessors, fileSublist, workerIngest, miscParameters = [options], drainQueues = False)
-    print("%s Done Parallel Processing" % (datetime.datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
+    print("%s Done Parallel Processing" % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
 
 
 def main(argv = None):
