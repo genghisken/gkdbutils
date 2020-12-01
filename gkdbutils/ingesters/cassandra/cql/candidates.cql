@@ -3,7 +3,7 @@
 -- Clustering key is candid
 
 CREATE TABLE candidates (
-    objectid ascii,
+    objectId ascii,
     candid bigint,
     aimage float,
     aimagerat float,
@@ -116,5 +116,5 @@ CREATE TABLE candidates (
     ypos float,
     zpclrcov float,
     zpmed float,
-    PRIMARY KEY (objectid, candid)
+    PRIMARY KEY (objectId, candid)
 );
