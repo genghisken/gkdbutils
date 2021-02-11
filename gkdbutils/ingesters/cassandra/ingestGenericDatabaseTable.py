@@ -2,7 +2,7 @@
 """Ingest Generic Database tables using multi-value insert statements and multiprocessing.
 
 Usage:
-  %s <configFile> <inputFile>... [--table=<table>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>]
+  %s <configFile> <inputFile>... [--table=<table>] [--tableDelimiter=<tableDelimiter>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>] [--fktable=<fktable>] [--fktablecols=<fktablecols>] [--fktablecoltypes=<fktablecoltypes>] [--fkfield=<fkfield>] [--fkfrominputdata=<fkfrominputdata>] [--racol=<racol>] [--deccol=<deccol>]
   %s (-h | --help)
   %s --version
 
@@ -10,18 +10,26 @@ Options:
   -h --help                                Show this screen.
   --version                                Show version.
   --table=<table>                          Target table name.
+  --tableDelimiter=<tableDelimiter>        Table delimiter (e.g. \\t \\s ,) where \\t = tab and \\s = space. Space delimited assumes one or more spaces between fields [default: \\s]
   --bundlesize=<bundlesize>                Group inserts into bundles of specified size [default: 1]
-  --nprocesses=<nprocesses>                Number of processes to use - warning - beware of opening too many processes [default: 16]
+  --nprocesses=<nprocesses>                Number of processes to use - warning - beware of opening too many processes [default: 1]
   --loglocationInsert=<loglocationInsert>  Log file location [default: /tmp/]
   --logprefixInsert=<logprefixInsert>      Log prefix [default: inserter]
   --loglocationIngest=<loglocationIngest>  Log file location [default: /tmp/]
   --logprefixIngest=<logprefixIngest>      Log prefix [default: ingester]
-  --types=<types>                          Column types.
+  --types=<types>                          Python column types in the same order as the column headers.
   --skiphtm                                Don't bother calculating HTMs. They're either already done or we don't need them.
   --nullValue=<nullValue>                  Value of NULL definition (e.g. NaN, NULL, \\N, None) [default: \\N]
+  --fktable=<fktable>                      Cassandra has a flat schema, so join to another table file via a foreign key (e.g. exposures).
+  --fktablecols=<fktablecols>              The valid columns in the foreign key table we want to use - comma separated, no spaces (e.g. expname,object,mjd,filter,mag5sig,zp_mag,fwhm_px,exptime,detem).
+  --fktablecoltypes=<fktablecoltypes>      The valid (python) column types in the foreign key table we want to use - comma separated, no spaces (e.g. str,str,float,str,float,float,float,float,float).
+  --fkfield=<fkfield>                      Foreign key field [default: expname]
+  --fkfrominputdata=<fkfrominputdata>      Foreign key from input data. If set to filename it will use the datafile filename as the key [default: filename]
+  --racol=<racol>                          Column that represents the RA [default: ra]
+  --deccol=<deccol>                        Column that represents the Declination [default: dec]
 
 Example:
-   %s /tmp/bile.csv.gz
+   %s config_cassandra.yaml 01a58464o0535o.dph --fktable=/Users/kws/atlas/dophot/all_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlasdophot --racol=RA --deccol=Dec
 
 """
 import sys
@@ -36,6 +44,10 @@ import subprocess
 from cassandra.cluster import Cluster
 import gzip
 from collections import OrderedDict
+
+# 2021-02-11 KWS Import the new htmNameBulk function! No need anymore to rely on an external binary!
+#                No need to write temporary files anymore.
+from gkhtm._gkhtm import htmNameBulk
 
 
 def nullValue(value, nullValue = '\\N'):
@@ -83,13 +95,25 @@ def executeLoad(session, table, data, bundlesize = 100, types = None):
     if len(data) == 0:
         return rowsUpdated
 
+    if types is None:
+        return rowsUpdated
+
     keys = list(data[0].keys())
+
+
+    if len(keys) != len(types):
+        print("Keys & Types mismatch")
+        return rowsUpdated
+
     typesDict = OrderedDict()
 
     i = 0
     for k in keys:
         typesDict[k] = types[i]
         i += 1
+
+    print(keys)
+    print(types)
 
     formatSpecifier = ','.join(['%s' for i in keys])
 
@@ -103,7 +127,9 @@ def executeLoad(session, table, data, bundlesize = 100, types = None):
     for dataChunk in subList:
         try:
             sql = "insert into %s " % table
-            sql += "(%s)" % ','.join(['%s' % k for k in keys])
+            # Force all keys to be lowercase and devoid of hyphens
+            sql += "(%s)" % ','.join(['%s' % k.lower().replace('-','') for k in keys])
+
             sql += " values "
             sql += ',\n'.join(['('+formatSpecifier+')' for x in range(len(dataChunk))])
             sql += ';'
@@ -116,11 +142,14 @@ def executeLoad(session, table, data, bundlesize = 100, types = None):
                         value = eval(typesDict[key])(value)
                     values.append(value)
 
+            print(sql)
             session.execute(sql, tuple(values))
 
 
         except Exception as e:
-            print("EXCEPTION", e)
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(e).__name__, e.args)
+            print(message)
             #print "Error %d: %s" % (e.args[0], e.args[1])
 
     return
@@ -135,7 +164,17 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     session = cluster.connect()
     session.set_keyspace(db['keyspace']) 
 
-    types = options.types.split(',')
+    combinedTypes = options.types
+    if options.fktablecoltypes is not None and options.types is not None:
+        combinedTypes = options.types + ',' + options.fktablecoltypes
+
+    # Add 3 string columns if the HTMs are being requested. You will not be able to insert into a table
+    # if its htm name components are not specified.
+    if not options.skiphtm:
+        combinedTypes = combinedTypes + ",str,str,str"
+
+    types = combinedTypes.split(',')
+    print (types)
 
     # This is in the worker function
     objectsForUpdate = executeLoad(session, options.table, objectListFragment, int(options.bundlesize), types=types)
@@ -146,13 +185,13 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
 
     return 0
 
-def ingestData(options, inputFiles):
+def ingestData(options, inputFiles, fkDict = None):
 
-    if options.skiphtm is None:
-        generateHtmNameBulk = which('generate_htmname_bulk')
-        if generateHtmNameBulk is None:
-            sys.stderr.write("Can't find the generate_htmname_bulk executable, so cannot continue.\n")
-            exit(1)
+    #if not options.skiphtm:
+    #    generateHtmNameBulk = which('generate_htmname_bulk')
+    #    if generateHtmNameBulk is None:
+    #        sys.stderr.write("Can't find the generate_htmname_bulk executable, so cannot continue.\n")
+    #        exit(1)
 
     import yaml
     with open(options.configFile) as yaml_file:
@@ -172,6 +211,12 @@ def ingestData(options, inputFiles):
     (year, month, day, hour, min, sec) = currentDate.split(':')
     dateAndTime = "%s%s%s_%s%s%s" % (year, month, day, hour, min, sec)
 
+    delimiter=options.tableDelimiter
+    if delimiter == '\\s':
+        delimiter = ' '
+    if delimiter == '\\t':
+        delimiter = '\t'
+
     for inputFile in inputFiles:
         print("Ingesting %s" % inputFile)
         if 'gz' in inputFile:
@@ -181,20 +226,46 @@ def ingestData(options, inputFiles):
         else:
             f = inputFile
     
-        data = readGenericDataFile(f, delimiter=',', useOrderedDict=True)
+        data = readGenericDataFile(f, delimiter=delimiter, useOrderedDict=True)
+
+        foreignKey = options.fkfrominputdata
+        if foreignKey == 'filename':
+            foreignKey = os.path.basename(inputFile).split('.')[0]
+
+
+        if fkDict:
+            for i in range(len(data)):
+                try:
+                    if options.fktablecols:
+                        # just pick out the specified keys
+                        keys = options.fktablecols.split(',')
+                        for k in keys:
+                            data[i][k] = fkDict[foreignKey][k]
+                    else:
+                        # Use all the keys by default
+                        for k,v in fkDict[foreignKey].items():
+                            data[i][k] = v
+                except KeyError as e:
+                    pass
+
+        print(data[0])
         pid = os.getpid()
     
-        if options.skiphtm is None:
-            tempRADecFile = '/tmp/' + os.path.basename(inputFile) + 'radec_' + str(pid)
-            tempLoadFile = '/tmp/' + os.path.basename(inputFile) + '_' + str(pid) + '.csv'
+        if not options.skiphtm:
+            #tempRADecFile = '/tmp/' + os.path.basename(inputFile) + 'radec_' + str(pid)
+            #tempLoadFile = '/tmp/' + os.path.basename(inputFile) + '_' + str(pid) + '.csv'
     
-            with open(tempRADecFile, 'wb') as f:
-                for row in data:
-                    f.write('%s %s\n' % (row['ra'], row['dec']))
+            coords = []
+            #with open(tempRADecFile, 'wb') as f:
+            #    for row in data:
+            #        f.write('%s %s\n' % (row['ra'], row['dec']))
+            for row in data:
+                coords.append([float(row[options.racol]), float(row[options.deccol])])
     
-            htm16Names = calculate_htm_name_bulk(generateHtmNameBulk, 16, tempRADecFile)
+            #htm16Names = calculate_htm_name_bulk(generateHtmNameBulk, 16, tempRADecFile)
+            htm16Names = htmNameBulk(16, coords)
     
-            os.remove(tempRADecFile)
+            #os.remove(tempRADecFile)
 
             # For Cassandra, we're going to split the HTM Name across several columns.
             # Furthermore, we only need to do this once for the deepest HTM level, because
@@ -239,16 +310,17 @@ def workerIngest(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     """thread worker function"""
     # Redefine the output to be a log file.
     options = miscParameters[0]
+    fkDict = miscParameters[1]
     sys.stdout = open('%s%s_%s_%d.log' % (options.loglocationIngest, options.logprefixIngest, dateAndTime, num), "w")
 
     # This is in the worker function
-    objectsForUpdate = ingestData(options, objectListFragment)
+    objectsForUpdate = ingestData(options, objectListFragment, fkDict = fkDict)
 
     print("Process complete.")
 
     return 0
 
-def ingestDataMultiprocess(options):
+def ingestDataMultiprocess(options, fkDict = None):
 
     currentDate = datetime.now().strftime("%Y:%m:%d:%H:%M:%S")
     (year, month, day, hour, min, sec) = currentDate.split(':')
@@ -257,7 +329,7 @@ def ingestDataMultiprocess(options):
     nProcessors, fileSublist = splitList(options.inputFile, bins = int(options.nprocesses), preserveOrder=True)
     
     print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
-    parallelProcess([], dateAndTime, nProcessors, fileSublist, workerIngest, miscParameters = [options], drainQueues = False)
+    parallelProcess([], dateAndTime, nProcessors, fileSublist, workerIngest, miscParameters = [options, fkDict], drainQueues = False)
     print("%s Done Parallel Processing" % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
 
 
@@ -267,8 +339,17 @@ def main(argv = None):
 
     # Use utils.Struct to convert the dict into an object for compatibility with old optparse code.
     options = Struct(**opts)
-    ingestDataMultiprocess(options)
-    #ingestData(options)
+
+    fkDict = {}
+    # If we have a foreign key table, read the data once only.  Pass this to the subprocesses.
+    if options.fktable:
+        fkeys = readGenericDataFile(options.fktable, delimiter='\t')
+        for row in fkeys:
+            fkDict[row[options.fkfield]] = row
+
+    #ingestDataMultiprocess(options, fkDict = fkDict)
+
+    ingestData(options, options.inputFile, fkDict = fkDict)
 
 
 if __name__=='__main__':
