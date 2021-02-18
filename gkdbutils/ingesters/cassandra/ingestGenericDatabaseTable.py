@@ -2,7 +2,7 @@
 """Ingest Generic Database tables using multi-value insert statements and multiprocessing.
 
 Usage:
-  %s <configFile> <inputFile>... [--table=<table>] [--tableDelimiter=<tableDelimiter>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>] [--fktable=<fktable>] [--fktablecols=<fktablecols>] [--fktablecoltypes=<fktablecoltypes>] [--fkfield=<fkfield>] [--fkfrominputdata=<fkfrominputdata>] [--racol=<racol>] [--deccol=<deccol>]
+  %s <configFile> <inputFile>... [--table=<table>] [--tableDelimiter=<tableDelimiter>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--nfileprocesses=<nfileprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>] [--fktable=<fktable>] [--fktablecols=<fktablecols>] [--fktablecoltypes=<fktablecoltypes>] [--fkfield=<fkfield>] [--fkfrominputdata=<fkfrominputdata>] [--racol=<racol>] [--deccol=<deccol>]
   %s (-h | --help)
   %s --version
 
@@ -12,7 +12,8 @@ Options:
   --table=<table>                          Target table name.
   --tableDelimiter=<tableDelimiter>        Table delimiter (e.g. \\t \\s ,) where \\t = tab and \\s = space. Space delimited assumes one or more spaces between fields [default: \\s]
   --bundlesize=<bundlesize>                Group inserts into bundles of specified size [default: 1]
-  --nprocesses=<nprocesses>                Number of processes to use - warning - beware of opening too many processes [default: 1]
+  --nprocesses=<nprocesses>                Number of processes to use per ingest file. Warning: nprocesses x nfileprocesses should not exceed nCPU. [default: 1]
+  --nfileprocesses=<nfileprocesses>        Number of processes over which to split the files. Warning: nprocesses x nfileprocesses should not exceed nCPU. [default: 1]
   --loglocationInsert=<loglocationInsert>  Log file location [default: /tmp/]
   --logprefixInsert=<logprefixInsert>      Log prefix [default: inserter]
   --loglocationIngest=<loglocationIngest>  Log file location [default: /tmp/]
@@ -159,8 +160,9 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     """thread worker function"""
     # Redefine the output to be a log file.
     options = miscParameters[0]
+
     sys.stdout = open('%s%s_%s_%d.log' % (options.loglocationInsert, options.logprefixInsert, dateAndTime, num), "w")
-    cluster = Cluster()
+    cluster = Cluster(db['hostname'])
     session = cluster.connect()
     session.set_keyspace(db['keyspace']) 
 
@@ -326,7 +328,7 @@ def ingestDataMultiprocess(options, fkDict = None):
     (year, month, day, hour, min, sec) = currentDate.split(':')
     dateAndTime = "%s%s%s_%s%s%s" % (year, month, day, hour, min, sec)
 
-    nProcessors, fileSublist = splitList(options.inputFile, bins = int(options.nprocesses), preserveOrder=True)
+    nProcessors, fileSublist = splitList(options.inputFile, bins = int(options.nfileprocesses), preserveOrder=True)
     
     print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
     parallelProcess([], dateAndTime, nProcessors, fileSublist, workerIngest, miscParameters = [options, fkDict], drainQueues = False)
@@ -347,9 +349,9 @@ def main(argv = None):
         for row in fkeys:
             fkDict[row[options.fkfield]] = row
 
-    #ingestDataMultiprocess(options, fkDict = fkDict)
+    ingestDataMultiprocess(options, fkDict = fkDict)
 
-    ingestData(options, options.inputFile, fkDict = fkDict)
+    #ingestData(options, options.inputFile, fkDict = fkDict)
 
 
 if __name__=='__main__':
