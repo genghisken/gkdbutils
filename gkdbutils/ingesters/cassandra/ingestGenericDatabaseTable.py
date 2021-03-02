@@ -2,13 +2,14 @@
 """Ingest Generic Database tables using multi-value insert statements and multiprocessing.
 
 Usage:
-  %s <configFile> <inputFile>... [--table=<table>] [--tableDelimiter=<tableDelimiter>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--nfileprocesses=<nfileprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>] [--fktable=<fktable>] [--fktablecols=<fktablecols>] [--fktablecoltypes=<fktablecoltypes>] [--fkfield=<fkfield>] [--fkfrominputdata=<fkfrominputdata>] [--racol=<racol>] [--deccol=<deccol>]
+  %s <configFile> <inputFile>... [--fileoffiles] [--table=<table>] [--tableDelimiter=<tableDelimiter>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--nfileprocesses=<nfileprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>] [--fktable=<fktable>] [--fktablecols=<fktablecols>] [--fktablecoltypes=<fktablecoltypes>] [--fkfield=<fkfield>] [--fkfrominputdata=<fkfrominputdata>] [--racol=<racol>] [--deccol=<deccol>]
   %s (-h | --help)
   %s --version
 
 Options:
   -h --help                                Show this screen.
   --version                                Show version.
+  --fileoffiles                            Read the CONTENTS of the inputFiles to get the filenames. Allows many thousands of files to be read, avoiding command line constraints.
   --table=<table>                          Target table name.
   --tableDelimiter=<tableDelimiter>        Table delimiter (e.g. \\t \\s ,) where \\t = tab and \\s = space. Space delimited assumes one or more spaces between fields [default: \\s]
   --bundlesize=<bundlesize>                Group inserts into bundles of specified size [default: 1]
@@ -113,8 +114,8 @@ def executeLoad(session, table, data, bundlesize = 100, types = None):
         typesDict[k] = types[i]
         i += 1
 
-    print(keys)
-    print(types)
+    #print(keys)
+    #print(types)
 
     formatSpecifier = ','.join(['%s' for i in keys])
 
@@ -143,7 +144,7 @@ def executeLoad(session, table, data, bundlesize = 100, types = None):
                         value = eval(typesDict[key])(value)
                     values.append(value)
 
-            print(sql)
+            #print(sql)
             session.execute(sql, tuple(values))
 
 
@@ -161,7 +162,8 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     # Redefine the output to be a log file.
     options = miscParameters[0]
 
-    sys.stdout = open('%s%s_%s_%d.log' % (options.loglocationInsert, options.logprefixInsert, dateAndTime, num), "w")
+    pid = os.getpid()
+    sys.stdout = open('%s%s_%s_%d_%d.log' % (options.loglocationInsert, options.logprefixInsert, dateAndTime, pid, num), "w")
     cluster = Cluster(db['hostname'])
     session = cluster.connect()
     session.set_keyspace(db['keyspace']) 
@@ -176,7 +178,7 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
         combinedTypes = combinedTypes + ",str,str,str"
 
     types = combinedTypes.split(',')
-    print (types)
+    #print (types)
 
     # This is in the worker function
     objectsForUpdate = executeLoad(session, options.table, objectListFragment, int(options.bundlesize), types=types)
@@ -313,7 +315,8 @@ def workerIngest(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     # Redefine the output to be a log file.
     options = miscParameters[0]
     fkDict = miscParameters[1]
-    sys.stdout = open('%s%s_%s_%d.log' % (options.loglocationIngest, options.logprefixIngest, dateAndTime, num), "w")
+    pid = os.getpid()
+    sys.stdout = open('%s%s_%s_%d_%d.log' % (options.loglocationIngest, options.logprefixIngest, dateAndTime, pid, num), "w")
 
     # This is in the worker function
     objectsForUpdate = ingestData(options, objectListFragment, fkDict = fkDict)
@@ -328,7 +331,19 @@ def ingestDataMultiprocess(options, fkDict = None):
     (year, month, day, hour, min, sec) = currentDate.split(':')
     dateAndTime = "%s%s%s_%s%s%s" % (year, month, day, hour, min, sec)
 
-    nProcessors, fileSublist = splitList(options.inputFile, bins = int(options.nfileprocesses), preserveOrder=True)
+    # Read the contents of the input file(s) to get the filenames to process.
+    files = options.inputFile
+
+    if options.fileoffiles:
+        files = []
+        for f in options.inputFile:
+            with open(f) as fp:
+                content = fp.readlines()
+                content = [filename.strip() for filename in content]
+            files += content
+
+    print(files)
+    nProcessors, fileSublist = splitList(files, bins = int(options.nfileprocesses), preserveOrder=True)
     
     print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
     parallelProcess([], dateAndTime, nProcessors, fileSublist, workerIngest, miscParameters = [options, fkDict], drainQueues = False)
@@ -351,7 +366,14 @@ def main(argv = None):
 
     ingestDataMultiprocess(options, fkDict = fkDict)
 
-    #ingestData(options, options.inputFile, fkDict = fkDict)
+    #files = options.inputFile
+    #if options.fileoffiles:
+    #    files = []
+    #    for f in inputFile:
+    #        with open(f) as fp:
+    #            content = fp.readlines()
+    #        files += content
+    #ingestData(options, files, fkDict = fkDict)
 
 
 if __name__=='__main__':
