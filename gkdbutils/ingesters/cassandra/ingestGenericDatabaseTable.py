@@ -31,11 +31,12 @@ Options:
   --deccol=<deccol>                        Column that represents the Declination [default: dec]
 
 Example:
-   %s config_cassandra.yaml 01a58464o0535o.dph --fktable=/Users/kws/atlas/dophot/all_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlasdophot --racol=RA --deccol=Dec
+  %s config_cassandra.yaml 01a58464o0535o.dph --fktable=/Users/kws/atlas/dophot/all_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlasdophot --racol=RA --deccol=Dec
 
+  %s /home/kws/config_cassandra_atlas.yaml /home/kws/atlas/dophot/ingest/parallel_machine_ingest_test/remaining_batch/exposures_around_galactic_centre_10degrees_20210219_cleaned_hko_only_second_attempt_db1 --fileoffiles --fktable=/home/kws/atlas/dophot/all_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlas_detections --racol=RA --deccol=Dec --nprocesses=8 --nfileprocesses=4 --loglocationIngest=/home/kws/cassandra_ingest_logs/db1/cassandra_ingest/galactic_centre_hko/ --loglocationInsert=/home/kws/cassandra_ingest_logs/db1/cassandra_ingest/galactic_centre_hko/
 """
 import sys
-__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
+__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
 from docopt import docopt
 import os, shutil, re
 from gkutils.commonutils import Struct, cleanOptions, readGenericDataFile, dbConnect, which, splitList, parallelProcess
