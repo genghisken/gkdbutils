@@ -2,7 +2,7 @@
 """Ingest Generic Database tables using multi-value insert statements and multiprocessing.
 
 Usage:
-  %s <configFile> <inputFile>... [--fileoffiles] [--table=<table>] [--tableDelimiter=<tableDelimiter>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--nfileprocesses=<nfileprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>] [--fktable=<fktable>] [--fktablecols=<fktablecols>] [--fktablecoltypes=<fktablecoltypes>] [--fkfield=<fkfield>] [--fkfrominputdata=<fkfrominputdata>] [--racol=<racol>] [--deccol=<deccol>]
+  %s <configFile> <inputFile>... [--fileoffiles] [--table=<table>] [--tableDelimiter=<tableDelimiter>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--nfileprocesses=<nfileprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--columns=<columns>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>] [--fktable=<fktable>] [--fktablecols=<fktablecols>] [--fktablecoltypes=<fktablecoltypes>] [--fkfield=<fkfield>] [--fkfrominputdata=<fkfrominputdata>] [--racol=<racol>] [--deccol=<deccol>]
   %s (-h | --help)
   %s --version
 
@@ -19,8 +19,9 @@ Options:
   --logprefixInsert=<logprefixInsert>      Log prefix [default: inserter]
   --loglocationIngest=<loglocationIngest>  Log file location [default: /tmp/]
   --logprefixIngest=<logprefixIngest>      Log prefix [default: ingester]
-  --types=<types>                          Python column types in the same order as the column headers.
-  --skiphtm                                Don't bother calculating HTMs. They're either already done or we don't need them.
+  --columns=<columns>                      List of columns, comma separated, no spaces. If blank, assumes all columns of the input data.
+  --types=<types>                          PYTHON column types in the same order as the column headers.
+  --skiphtm                                Don't bother calculating HTMs. They're either already done or we don't need them. (I.e. not spatially indexed data.)
   --nullValue=<nullValue>                  Value of NULL definition (e.g. NaN, NULL, \\N, None) [default: \\N]
   --fktable=<fktable>                      Cassandra has a flat schema, so join to another table file via a foreign key (e.g. exposures).
   --fktablecols=<fktablecols>              The valid columns in the foreign key table we want to use - comma separated, no spaces (e.g. expname,object,mjd,filter,mag5sig,zp_mag,fwhm_px,exptime,detem).
@@ -34,16 +35,17 @@ Example:
   %s config_cassandra.yaml 01a58464o0535o.dph --fktable=/Users/kws/atlas/dophot/all_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlasdophot --racol=RA --deccol=Dec
 
   %s /home/kws/config_cassandra_atlas.yaml /home/kws/atlas/dophot/ingest/parallel_machine_ingest_test/remaining_batch/exposures_around_galactic_centre_10degrees_20210219_cleaned_hko_only_second_attempt_db1 --fileoffiles --fktable=/home/kws/atlas/dophot/all_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlas_detections --racol=RA --deccol=Dec --nprocesses=8 --nfileprocesses=4 --loglocationIngest=/home/kws/cassandra_ingest_logs/db1/cassandra_ingest/galactic_centre_hko/ --loglocationInsert=/home/kws/cassandra_ingest_logs/db1/cassandra_ingest/galactic_centre_hko/
+
+  %s /Users/kws/config_cassandra.yaml /Users/kws/lasair/cassandra/load-old-data/noncandidates/file_of_files_to_ingest.txt --fileoffiles --types=str,float,float,int,int,float,float,float,int --table=test_noncandidates --tableDelimiter=, --nprocesses=11 --nfileprocesses=1 --skiphtm
 """
 import sys
-__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
+__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
 from docopt import docopt
 import os, shutil, re
 from gkutils.commonutils import Struct, cleanOptions, readGenericDataFile, dbConnect, which, splitList, parallelProcess
 from datetime import datetime
 from datetime import timedelta
 import subprocess
-#import MySQLdb
 from cassandra.cluster import Cluster
 import gzip
 from collections import OrderedDict
@@ -77,18 +79,6 @@ def boolToInteger(value):
         returnValue = 0
     return returnValue
 
-def calculate_htm_name_bulk(generateHtmNameBulk, htmLevel, tempRaDecFile):
-    # Call the C++ HTM ID calculator
-    htmIDs = []
-
-    p = subprocess.Popen([generateHtmNameBulk, str(htmLevel), tempRaDecFile], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    output, errors = p.communicate()
-
-    if output.strip():
-        htmIDs = output.strip().split('\n')
-
-    return htmIDs
-
 
 # Use INSERT statements so we can use multiprocessing
 def executeLoad(session, table, data, bundlesize = 100, types = None):
@@ -96,9 +86,11 @@ def executeLoad(session, table, data, bundlesize = 100, types = None):
     rowsUpdated = 0
 
     if len(data) == 0:
+        print("No data!")
         return rowsUpdated
 
     if types is None:
+        print("No types!")
         return rowsUpdated
 
     keys = list(data[0].keys())
@@ -145,7 +137,7 @@ def executeLoad(session, table, data, bundlesize = 100, types = None):
                         value = eval(typesDict[key])(value)
                     values.append(value)
 
-            #print(sql)
+            print(sql)
             session.execute(sql, tuple(values))
 
 
@@ -179,7 +171,6 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
         combinedTypes = combinedTypes + ",str,str,str"
 
     types = combinedTypes.split(',')
-    #print (types)
 
     # This is in the worker function
     objectsForUpdate = executeLoad(session, options.table, objectListFragment, int(options.bundlesize), types=types)
@@ -191,12 +182,6 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     return 0
 
 def ingestData(options, inputFiles, fkDict = None):
-
-    #if not options.skiphtm:
-    #    generateHtmNameBulk = which('generate_htmname_bulk')
-    #    if generateHtmNameBulk is None:
-    #        sys.stderr.write("Can't find the generate_htmname_bulk executable, so cannot continue.\n")
-    #        exit(1)
 
     import yaml
     with open(options.configFile) as yaml_file:
@@ -233,6 +218,15 @@ def ingestData(options, inputFiles, fkDict = None):
     
         data = readGenericDataFile(f, delimiter=delimiter, useOrderedDict=True)
 
+        # 2021-07-29 KWS This is a bit inefficient, but trim the data down to specified columns if they are present.
+        if options.columns:
+            trimmedData = []
+            for row in data:
+                trimmedRow = {key: row[key] for key in options.columns.split(',')}
+                trimmedData.append(trimmedRow)
+            data = trimmedData
+
+
         foreignKey = options.fkfrominputdata
         if foreignKey == 'filename':
             foreignKey = os.path.basename(inputFile).split('.')[0]
@@ -257,20 +251,12 @@ def ingestData(options, inputFiles, fkDict = None):
         pid = os.getpid()
     
         if not options.skiphtm:
-            #tempRADecFile = '/tmp/' + os.path.basename(inputFile) + 'radec_' + str(pid)
-            #tempLoadFile = '/tmp/' + os.path.basename(inputFile) + '_' + str(pid) + '.csv'
     
             coords = []
-            #with open(tempRADecFile, 'wb') as f:
-            #    for row in data:
-            #        f.write('%s %s\n' % (row['ra'], row['dec']))
             for row in data:
                 coords.append([float(row[options.racol]), float(row[options.deccol])])
     
-            #htm16Names = calculate_htm_name_bulk(generateHtmNameBulk, 16, tempRADecFile)
             htm16Names = htmNameBulk(16, coords)
-    
-            #os.remove(tempRADecFile)
 
             # For Cassandra, we're going to split the HTM Name across several columns.
             # Furthermore, we only need to do this once for the deepest HTM level, because
