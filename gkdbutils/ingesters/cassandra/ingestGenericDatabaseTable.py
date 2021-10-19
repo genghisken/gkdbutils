@@ -52,7 +52,63 @@ from collections import OrderedDict
 
 # 2021-02-11 KWS Import the new htmNameBulk function! No need anymore to rely on an external binary!
 #                No need to write temporary files anymore.
-from gkhtm._gkhtm import htmNameBulk
+from gkhtm._gkhtm import htmNameBulk, htmIDBulk
+
+def readZTFAvroPacket(filename, addhtm16 = None):
+    from fastavro import reader
+    print(filename)
+    with open(filename, 'rb') as f:
+        candlist = []
+        nondetectionCandlist = []
+        avro_reader = reader(f)
+        for record in avro_reader:
+            prv_candidates = []
+            try:
+                if record['prv_candidates'] is not None:
+                    prv_candidates = record['prv_candidates']
+            except KeyError as e:
+                pass
+            candidates = [record['candidate']] + prv_candidates
+            for cand in candidates:
+   
+                # Remove the images.
+                try:
+                    del cand['cutoutDifference']
+                except KeyError as e:
+                    pass
+                try:
+                    del cand['cutoutTemplate']
+                except KeyError as e:
+                    pass
+                try:
+                    del cand['cutoutScience']
+                except KeyError as e:
+                    pass
+
+                cand['objectId'] = record['objectId']
+
+                if not 'candid' in cand or not cand['candid']:
+                    nondetectionCandlist.append({'objectId': cand['objectId'],
+                                                 'jd': cand['jd'],
+                                                 'fid': cand['fid'],
+                                                 'diffmaglim': cand['diffmaglim'],
+                                                 'nid': cand['nid'],
+                                                 'field': cand['field'],
+                                                 'magzpsci': cand['magzpsci'],
+                                                 'magzpsciunc': cand['magzpsciunc'],
+                                                 'magzpscirms': cand['magzpscirms']})
+                else:
+                    candlist.append(cand)
+
+    if addhtm16 is not None:
+        coords = [[x['ra'], x['dec']] for x in candlist]
+        htm16s = htmIDBulk(16, coords)
+        for i in range(len(candlist)):
+            candlist[i]['htm16'] = htm16s[i]
+
+    data = {'candidates': candlist, 'noncandidates': nondetectionCandlist}
+
+    return data
 
 
 def nullValue(value, nullValue = '\\N'):
@@ -81,34 +137,36 @@ def boolToInteger(value):
 
 
 # Use INSERT statements so we can use multiprocessing
-def executeLoad(session, table, data, bundlesize = 100, types = None):
+# 2021-10-16 KWS Why do we need types?? This is because if we send the data as a CSV dict,
+#                then Cassandra will not know what to do with the data. A float != string.
+#                MySQL is a bit more generous inasmuch as it will auto cast. Not Cassandra.
+#                We allow this option so that we can pass the data directly from CSV.
+#                An alternative approach is to modify readGenericDataFile so that it will
+#                cast during the load. Avro dictionaries are already typed.
+def executeLoad(session, table, data, bundlesize = 1, types = None):
 
     rowsUpdated = 0
 
     if len(data) == 0:
-        print("No data!")
+        print('No data!')
         return rowsUpdated
 
-    if types is None:
-        print("No types!")
-        return rowsUpdated
+    #if types is None:
+    #    return rowsUpdated
 
     keys = list(data[0].keys())
 
-
-    if len(keys) != len(types):
-        print("Keys & Types mismatch")
-        return rowsUpdated
-
     typesDict = OrderedDict()
 
-    i = 0
-    for k in keys:
-        typesDict[k] = types[i]
-        i += 1
+    if types is not None:
+        if len(keys) != len(types):
+            print("Keys & Types mismatch")
+            return rowsUpdated
+        i = 0
+        for k in keys:
+            typesDict[k] = types[i]
+            i += 1
 
-    #print(keys)
-    #print(types)
 
     formatSpecifier = ','.join(['%s' for i in keys])
 
@@ -130,14 +188,23 @@ def executeLoad(session, table, data, bundlesize = 100, types = None):
             sql += ';'
 
             values = []
-            for row in dataChunk:
-                for key in keys:
-                    value = nullValueNULL(boolToInteger(row[key]))
-                    if value is not None:
-                        value = eval(typesDict[key])(value)
-                    values.append(value)
 
-            print(sql)
+            for row in dataChunk:
+                # If data comes from a CSV. We need to cast the results using the types. Otherwise assume
+                # the types are already correct. (E.g. data read from an Avro file.)
+                for key in keys:
+                    if types is not None:
+                        value = nullValueNULL(boolToInteger(row[key]))
+                        if value is not None:
+                            value = eval(typesDict[key])(value)
+                        values.append(value)
+                    # The data is already in the right python type. (Actually it doesn't matter! All the values are strings!)
+                    else:
+                        value = row[key]
+                        values.append(value)
+
+
+            print(sql, tuple(values))
             session.execute(sql, tuple(values))
 
 
@@ -145,7 +212,6 @@ def executeLoad(session, table, data, bundlesize = 100, types = None):
             template = "An exception of type {0} occurred. Arguments:\n{1!r}"
             message = template.format(type(e).__name__, e.args)
             print(message)
-            #print "Error %d: %s" % (e.args[0], e.args[1])
 
     return
 
@@ -167,10 +233,12 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
 
     # Add 3 string columns if the HTMs are being requested. You will not be able to insert into a table
     # if its htm name components are not specified.
-    if not options.skiphtm:
+    if not options.skiphtm and combinedTypes is not None:
         combinedTypes = combinedTypes + ",str,str,str"
 
-    types = combinedTypes.split(',')
+    types = None
+    if combinedTypes is not None:
+        types = combinedTypes.split(',')
 
     # This is in the worker function
     objectsForUpdate = executeLoad(session, options.table, objectListFragment, int(options.bundlesize), types=types)
@@ -209,14 +277,28 @@ def ingestData(options, inputFiles, fkDict = None):
 
     for inputFile in inputFiles:
         print("Ingesting %s" % inputFile)
-        if 'gz' in inputFile:
+        if '.gz' in inputFile:
             # It's probably gzipped
             f = gzip.open(inputFile, 'rb')
             print(type(f).__name__)
         else:
             f = inputFile
     
-        data = readGenericDataFile(f, delimiter=delimiter, useOrderedDict=True)
+        if 'avro' in inputFile:
+            # Data is in Avro packets, with schema. Let's hard-wire to the ZTF schema for the time being.
+            avroData = readZTFAvroPacket(f, addhtm16 = True)
+            if 'noncandidates' in options.table:
+                data = avroData['noncandidates']
+            elif 'candidates' in options.table:
+                data = avroData['candidates']
+            else:
+                print("Error. Incorrect table definition for Avro packets. Must contain candidates or noncandidates.")
+                exit(1)
+
+        else:
+            # Data is in plain text file. No schema present, so will need to provide
+            # column types.
+            data = readGenericDataFile(f, delimiter=delimiter, useOrderedDict=True)
 
         # 2021-07-29 KWS This is a bit inefficient, but trim the data down to specified columns if they are present.
         if options.columns:
@@ -247,7 +329,7 @@ def ingestData(options, inputFiles, fkDict = None):
                 except KeyError as e:
                     pass
 
-        print(data[0])
+        #print(data[0])
         pid = os.getpid()
     
         if not options.skiphtm:

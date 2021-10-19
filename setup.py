@@ -14,7 +14,7 @@ setup(
     description='A collection useful utilities - mostly related to astronomy',
     long_description=readme(),
     long_description_content_type="text/markdown",
-    version="0.0.8",
+    version="0.0.10",
     author='genghisken',
     author_email='ken.w.smith@gmail.com',
     license='MIT',
@@ -27,6 +27,12 @@ setup(
           'Programming Language :: Python :: 3.6',
           'Topic :: Utilities',
     ],
+    install_requires=[
+          'gkutils',
+          'gkhtm',
+          'mysqlclient',
+          'cassandra-driver',
+      ],
     python_requires='>=3.6',
     entry_points = {
         'console_scripts': ['cassandraIngest=gkdbutils.ingesters.cassandra.ingestGenericDatabaseTable:main', 'mysqlIngest=gkdbutils.ingesters.mysql.ingestGenericDatabaseTable:main'],
