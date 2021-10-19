@@ -204,7 +204,7 @@ def executeLoad(session, table, data, bundlesize = 1, types = None):
                         values.append(value)
 
 
-            print(sql, tuple(values))
+            #print(sql, tuple(values))
             session.execute(sql, tuple(values))
 
 
