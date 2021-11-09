@@ -29,7 +29,6 @@ from gkutils.commonutils import Struct, cleanOptions, readGenericDataFile, dbCon
 from datetime import datetime
 from datetime import timedelta
 import subprocess
-import MySQLdb
 import gzip
 
 
@@ -72,6 +71,7 @@ def calculate_htm_ids_bulk(generateHtmidBulk, htmLevel, tempRaDecFile):
 
 # Use INSERT statements so we can use multiprocessing
 def executeLoad(conn, table, data, bundlesize = 100):
+    import MySQLdb
 
     rowsUpdated = 0
 

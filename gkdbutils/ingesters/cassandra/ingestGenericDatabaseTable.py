@@ -46,7 +46,6 @@ from gkutils.commonutils import Struct, cleanOptions, readGenericDataFile, dbCon
 from datetime import datetime
 from datetime import timedelta
 import subprocess
-from cassandra.cluster import Cluster
 import gzip
 from collections import OrderedDict
 
@@ -219,6 +218,7 @@ def executeLoad(session, table, data, bundlesize = 1, types = None):
 def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParameters):
     """thread worker function"""
     # Redefine the output to be a log file.
+    from cassandra.cluster import Cluster
     options = miscParameters[0]
 
     pid = os.getpid()
