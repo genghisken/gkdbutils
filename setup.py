@@ -14,7 +14,7 @@ setup(
     description='A collection useful utilities - mostly related to astronomy',
     long_description=readme(),
     long_description_content_type="text/markdown",
-    version="0.0.12",
+    version="0.0.13",
     author='genghisken',
     author_email='ken.w.smith@gmail.com',
     license='MIT',
@@ -30,8 +30,6 @@ setup(
     install_requires=[
           'gkutils',
           'gkhtm',
-          'mysqlclient',
-          'cassandra-driver',
       ],
     python_requires='>=3.6',
     entry_points = {
