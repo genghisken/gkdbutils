@@ -22,10 +22,10 @@ then
 elif [ $TABLE == "sscandidates" ]
 then
     COLS="ssnamenr,jd,candid,chinr,chipsf,dec,decnr,diffmaglim,exptime,fid,field,fwhm,isdiffpos,jdendhist,jdendref,jdstarthist,jdstartref,magap,magapbig,magdiff,magfromlim,maggaia,maggaiabright,magnr,magpsf,magzpsci,magzpscirms,magzpsciunc,nbad,nid,nneg,objectid,ra,ranr,rb,rbversion,scorr,seeratio,sigmagap,sigmagapbig,sigmagnr,sigmapsf,sky,ssdistnr,ssmagnr,ssnrms,sumrat,xpos,ypos,zpclrcov,zpmed,htm10,htm13,htm16"
-elif [ $TABLE == "candidates" ]
+elif [ $TABLE == "old_candidates" ]
 then
     COLS="objectid,candid,aimage,aimagerat,bimage,bimagerat,chinr,chipsf,classtar,clrcoeff,clrcounc,clrmed,clrrms,dec,decnr,diffmaglim,distnr,distpsnr1,distpsnr2,distpsnr3,drb,drbversion,dsdiff,dsnrms,elong,exptime,fid,field,fwhm,htmid16,isdiffpos,jd,jdendhist,jdendref,jdstarthist,jdstartref,magap,magapbig,magdiff,magfromlim,maggaia,maggaiabright,magnr,magpsf,magzpsci,magzpscirms,magzpsciunc,mindtoedge,nbad,ncovhist,ndethist,neargaia,neargaiabright,nframesref,nid,nmatches,nmtchps,nneg,objectidps1,objectidps2,objectidps3,pdiffimfilename,pid,programid,programpi,ra,ranr,rb,rbversion,rcid,rfid,scorr,seeratio,sgmag1,sgmag2,sgmag3,sgscore1,sgscore2,sgscore3,sharpnr,sigmagap,sigmagapbig,sigmagnr,sigmapsf,simag1,simag2,simag3,sky,srmag1,srmag2,srmag3,ssdistnr,ssmagnr,ssnamenr,ssnrms,sumrat,szmag1,szmag2,szmag3,tblid,tooflag,xpos,ypos,zpclrcov,zpmed"
-elif [ $TABLE == "test_candidates" ]
+elif [ $TABLE == "candidates" ]
 then
     COLS="objectid,jd,aimage,aimagerat,bimage,bimagerat,candid,chinr,chipsf,classtar,clrcoeff,clrcounc,clrmed,clrrms,dec,decnr,diffmaglim,distnr,distpsnr1,distpsnr2,distpsnr3,drb,drbversion,dsdiff,dsnrms,elong,exptime,fid,field,fwhm,htmid16,isdiffpos,jdendhist,jdendref,jdstarthist,jdstartref,magap,magapbig,magdiff,magfromlim,maggaia,maggaiabright,magnr,magpsf,magzpsci,magzpscirms,magzpsciunc,mindtoedge,nbad,ncovhist,ndethist,neargaia,neargaiabright,nframesref,nid,nmatches,nmtchps,nneg,objectidps1,objectidps2,objectidps3,pdiffimfilename,pid,programid,programpi,ra,ranr,rb,rbversion,rcid,rfid,scorr,seeratio,sgmag1,sgmag2,sgmag3,sgscore1,sgscore2,sgscore3,sharpnr,sigmagap,sigmagapbig,sigmagnr,sigmapsf,simag1,simag2,simag3,sky,srmag1,srmag2,srmag3,ssdistnr,ssmagnr,ssnamenr,ssnrms,sumrat,szmag1,szmag2,szmag3,tblid,tooflag,xpos,ypos,zpclrcov,zpmed"
 else
@@ -38,6 +38,7 @@ fi
 cd $DATADIR
 for file in `ls $PREFIX*.csv | awk -F_ '{print $0" "$2}' | sort -nk2 | awk '{print $1}'`
 do
+    echo Loading file: $file
     cqlsh -e "COPY $KEYSPACE.$TABLE($COLS) FROM '$file' WITH HEADER = TRUE;"
 done
 
