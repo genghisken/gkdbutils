@@ -38,6 +38,7 @@ fi
 cd $DATADIR
 for file in `ls $PREFIX*.csv | awk -F_ '{print $0" "$2}' | sort -nk2 | awk '{print $1}'`
 do
+    echo
     echo Loading file: $file
     cqlsh -e "COPY $KEYSPACE.$TABLE($COLS) FROM '$file' WITH HEADER = TRUE;"
 done
