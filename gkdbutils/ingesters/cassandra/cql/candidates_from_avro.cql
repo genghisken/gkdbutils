@@ -1,6 +1,6 @@
 -- Example code to create the ZTF candidates table
 -- Partition key is object id
--- Clustering key is candid
+-- Clustering key is jd
 
 CREATE TABLE candidates (
     objectId ascii,
@@ -108,5 +108,5 @@ CREATE TABLE candidates (
     maggaiabright float,
     exptime float,
     htmid16 bigint,
-    PRIMARY KEY (objectId, candid)
+    PRIMARY KEY (objectId, jd)
 );
