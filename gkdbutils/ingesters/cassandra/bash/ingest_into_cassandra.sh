@@ -3,9 +3,9 @@
 # Import a cassandra table. The data must be split into chunks because of a memory
 # leak in the COPY command.
 
-if [ $# -ne 4 ]
+if [ $# -ne 5 ]
 then
-    echo "Usage: `basename $0` <keyspace> <table> <file prefix> <data directory>"
+    echo "Usage: `basename $0` <keyspace> <table> <file prefix> <data directory> <n processes>"
     exit 1
 fi
 
@@ -13,6 +13,14 @@ export KEYSPACE=$1
 export TABLE=$2
 export PREFIX=$3
 export DATADIR=$4
+export NPROCESSES=$5
+
+export PROCESSES_CLAUSE=""
+
+if [ $NPROCESSES -gt "0" ]
+then
+    export PROCESSES_CLAUSE="AND NUMPROCESSES = $NPROCESSES"
+fi
 
 export COLS=""
 
@@ -28,11 +36,18 @@ then
 elif [ $TABLE == "candidates" ]
 then
     COLS="objectid,jd,aimage,aimagerat,bimage,bimagerat,candid,chinr,chipsf,classtar,clrcoeff,clrcounc,clrmed,clrrms,dec,decnr,diffmaglim,distnr,distpsnr1,distpsnr2,distpsnr3,drb,drbversion,dsdiff,dsnrms,elong,exptime,fid,field,fwhm,htmid16,isdiffpos,jdendhist,jdendref,jdstarthist,jdstartref,magap,magapbig,magdiff,magfromlim,maggaia,maggaiabright,magnr,magpsf,magzpsci,magzpscirms,magzpsciunc,mindtoedge,nbad,ncovhist,ndethist,neargaia,neargaiabright,nframesref,nid,nmatches,nmtchps,nneg,objectidps1,objectidps2,objectidps3,pdiffimfilename,pid,programid,programpi,ra,ranr,rb,rbversion,rcid,rfid,scorr,seeratio,sgmag1,sgmag2,sgmag3,sgscore1,sgscore2,sgscore3,sharpnr,sigmagap,sigmagapbig,sigmagnr,sigmapsf,simag1,simag2,simag3,sky,srmag1,srmag2,srmag3,ssdistnr,ssmagnr,ssnamenr,ssnrms,sumrat,szmag1,szmag2,szmag3,tblid,tooflag,xpos,ypos,zpclrcov,zpmed"
+elif [ $TABLE == "noncandidates" ]
+then
+    COLS="objectid,jd,diffmaglim,fid,field,magzpsci,magzpscirms,magzpsciunc,nid"
 else
     echo "Unknown table $TABLE. Exiting."
     exit 1
 fi
 
+if [ $TABLE == "old_candidates" ]
+then
+    export TABLE="candidates"
+fi
 
 #Sort the file into numeric order, since we don't have a 0 prefix.
 cd $DATADIR
@@ -40,6 +55,6 @@ for file in `ls $PREFIX*.csv | awk -F_ '{print $0" "$2}' | sort -nk2 | awk '{pri
 do
     echo
     echo Loading file: $file
-    cqlsh -e "COPY $KEYSPACE.$TABLE($COLS) FROM '$file' WITH HEADER = TRUE;"
+    cqlsh -e "COPY $KEYSPACE.$TABLE($COLS) FROM '$file' WITH HEADER = TRUE $PROCESSES_CLAUSE;"
 done
 
