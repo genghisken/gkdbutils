@@ -70,8 +70,8 @@ def test_me():
             outputData = list(session.execute(simple_statement, (row['objectId'],)))
             lightcurves[row['objectId']] = outputData
 
-        for k,v in lightcurves.items():
-            print(k, v)
+#        for k,v in lightcurves.items():
+#            print(k, v)
             
         cluster.shutdown()
 
