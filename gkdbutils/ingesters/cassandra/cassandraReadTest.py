@@ -119,8 +119,8 @@ def test_me():
             session.set_keyspace(db['keyspace'])
 
             lightcurves = getLCByObject(options, session, subset)
-            for k,v in lightcurves.items():
-                print(k, v)
+#            for k,v in lightcurves.items():
+#                print(k, v)
 
             cluster.shutdown()
 
