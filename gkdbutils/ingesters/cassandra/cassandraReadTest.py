@@ -1,21 +1,24 @@
 """Read inserted data from Cassandra based on randomly selected objects from input list.
 
 Usage:
-  %s <configFile> <filename> [--table=<table>] [--number=<number>]
+  %s <configFile> <filename> [--table=<table>] [--number=<number>] [--nprocesses=<nprocesses>] [--loglocation=<loglocation>] [--logprefix=<logprefix>]
   %s (-h | --help)
   %s --version
 
 Options:
-  -h --help                  Show this screen.
-  --version                  Show version.
-  --table=<table>            Table name [default: candidates].
-  --number=<number>          Number of random objects we want to pick from the list [default: 5].
+  -h --help                             Show this screen.
+  --version                             Show version.
+  --table=<table>                       Table name [default: candidates].
+  --number=<number>                     Number of random objects we want to pick from the list [default: 5].
+  --nprocesses=<nprocesses>             Number of processes to use by default to get/write the results [default: 1]
+  --loglocation=<loglocation>           Log file location [default: /tmp/].
+  --logprefix=<logprefix>               Log prefix [default: lcSearch].
 
 """
 import sys
 __doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0])
 from docopt import docopt
-from gkutils.commonutils import Struct, readGenericDataFile, cleanOptions, splitList
+from gkutils.commonutils import Struct, readGenericDataFile, cleanOptions, splitList, parallelProcess
 import csv
 from cassandra.cluster import Cluster
 from collections import OrderedDict, defaultdict
@@ -23,8 +26,48 @@ from collections import OrderedDict, defaultdict
 from cassandra import ConsistencyLevel
 from cassandra.query import dict_factory, SimpleStatement
 import random
+from datetime import datetime
+import os
 
 # OK - so it looks like if you want to test stuff, they all have to be inside the test_ function.
+
+def getLCByObject(options, session, objectList):
+    lightcurves = {}
+    for row in objectList:
+        # Turn off paging by default. Default page size is 5000.
+        simple_statement = SimpleStatement("select * from candidates where objectId = %s;", consistency_level=ConsistencyLevel.ONE, fetch_size=None)
+        # Can only iterate once through the output data. Store in a list.
+        outputData = list(session.execute(simple_statement, (row['objectId'],)))
+        lightcurves[row['objectId']] = outputData
+
+#    for k,v in lightcurves.items():
+#        print(k, v)
+    return lightcurves
+            
+
+
+def worker(num, db, objectListFragment, dateAndTime, firstPass, miscParameters):
+    """thread worker function"""
+    # Redefine the output to be a log file.
+    options = miscParameters[0]
+
+    pid = os.getpid()
+    sys.stdout = open('%s%s_%s_%d_%d.log' % (options.loglocation, options.logprefix, dateAndTime, pid, num), "w")
+    cluster = Cluster(db['hostname'])
+    session = cluster.connect()
+    session.row_factory = dict_factory
+    session.set_keyspace(db['keyspace'])
+
+
+    # This is in the worker function
+    lightcurves = getLCByObject(options, session, objectListFragment)
+
+    print("Process complete.")
+    cluster.shutdown()
+    print("Connection Closed - exiting")
+
+    return 0
+
 
 def test_me():
 
@@ -49,10 +92,6 @@ def test_me():
               'keyspace': keyspace,
               'hostname': hostname}
 
-        cluster = Cluster(db['hostname'])
-        session = cluster.connect()
-        session.set_keyspace(db['keyspace']) 
-
 
         # Get n lightcurves. Consider doing this in parallel for a proper test.
         # As an initial test, run it single threaded.
@@ -62,18 +101,53 @@ def test_me():
         if len(inputData) > int(options.number):
             subset = random.sample(inputData, int(options.number))
 
-        lightcurves = {}
-        for row in subset:
-            # Turn off paging by default. Default page size is 5000.
-            simple_statement = SimpleStatement("select * from candidates where objectId = %s;", consistency_level=ConsistencyLevel.ONE, fetch_size=None)
-            # Can only iterate once through the output data. Store in a list.
-            outputData = list(session.execute(simple_statement, (row['objectId'],)))
-            lightcurves[row['objectId']] = outputData
+
+        if int(options.nprocesses) > 1 and len(subset) > 1:
+            # Do it in parallel!
+            currentDate = datetime.now().strftime("%Y:%m:%d:%H:%M:%S")
+            (year, month, day, hour, min, sec) = currentDate.split(':')
+            dateAndTime = "%s%s%s_%s%s%s" % (year, month, day, hour, min, sec)
+            nProcessors, listChunks = splitList(subset, bins = int(options.nprocesses), preserveOrder=True)
+
+            print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
+            parallelProcess(db, dateAndTime, nProcessors, listChunks, worker, miscParameters = [options], drainQueues = False)
+            print("%s Done Parallel Processing" % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
+        else:
+            cluster = Cluster(db['hostname'])
+            session = cluster.connect()
+            session.row_factory = dict_factory
+            session.set_keyspace(db['keyspace'])
+
+            lightcurves = getLCByObject(options, session, subset)
+            for k,v in lightcurves.items():
+                print(k, v)
+
+            cluster.shutdown()
+
+
+
+
+
+
+
+
+
+
+
+
+#        lightcurves = getLCByObject(options, session, subset)
+#        lightcurves = {}
+#        for row in subset:
+#            # Turn off paging by default. Default page size is 5000.
+#            simple_statement = SimpleStatement("select * from candidates where objectId = %s;", consistency_level=ConsistencyLevel.ONE, fetch_size=None)
+#            # Can only iterate once through the output data. Store in a list.
+#            outputData = list(session.execute(simple_statement, (row['objectId'],)))
+#            lightcurves[row['objectId']] = outputData
 
 #        for k,v in lightcurves.items():
 #            print(k, v)
             
-        cluster.shutdown()
+#        cluster.shutdown()
 
     # Verify the test - read the test data from the database
 #    def verify(options, inputData):
