@@ -26,7 +26,8 @@ export COLS=""
 
 if [ $TABLE == "htmcandidates" ]
 then
-    COLS="ssnamenr,jd,candid,chinr,chipsf,dec,decnr,diffmaglim,exptime,fid,field,fwhm,isdiffpos,jdendhist,jdendref,jdstarthist,jdstartref,magap,magapbig,magdiff,magfromlim,maggaia,maggaiabright,magnr,magpsf,magzpsci,magzpscirms,magzpsciunc,nbad,nid,nneg,objectid,ra,ranr,rb,rbversion,scorr,seeratio,sigmagap,sigmagapbig,sigmagnr,sigmapsf,sky,ssdistnr,ssmagnr,ssnrms,sumrat,xpos,ypos,zpclrcov,zpmed,htm10,htm13,htm16"
+#    COLS="ssnamenr,jd,candid,chinr,chipsf,dec,decnr,diffmaglim,exptime,fid,field,fwhm,isdiffpos,jdendhist,jdendref,jdstarthist,jdstartref,magap,magapbig,magdiff,magfromlim,maggaia,maggaiabright,magnr,magpsf,magzpsci,magzpscirms,magzpsciunc,nbad,nid,nneg,objectid,ra,ranr,rb,rbversion,scorr,seeratio,sigmagap,sigmagapbig,sigmagnr,sigmapsf,sky,ssdistnr,ssmagnr,ssnrms,sumrat,xpos,ypos,zpclrcov,zpmed,htm10,htm13,htm16"
+    COLS="htm10,htm13,htm16,jd,candid,chinr,chipsf,dec,decnr,diffmaglim,exptime,fid,field,fwhm,isdiffpos,jdendhist,jdendref,jdstarthist,jdstartref,magap,magapbig,magdiff,magfromlim,maggaia,maggaiabright,magnr,magpsf,magzpsci,magzpscirms,magzpsciunc,nbad,nid,nneg,objectid,ra,ranr,rb,rbversion,scorr,seeratio,sigmagap,sigmagapbig,sigmagnr,sigmapsf,sky,ssdistnr,ssmagnr,ssnamenr,ssnrms,sumrat,xpos,ypos,zpclrcov,zpmed"
 elif [ $TABLE == "sscandidates" ]
 then
     COLS="ssnamenr,jd,candid,chinr,chipsf,dec,decnr,diffmaglim,exptime,fid,field,fwhm,isdiffpos,jdendhist,jdendref,jdstarthist,jdstartref,magap,magapbig,magdiff,magfromlim,maggaia,maggaiabright,magnr,magpsf,magzpsci,magzpscirms,magzpsciunc,nbad,nid,nneg,objectid,ra,ranr,rb,rbversion,scorr,seeratio,sigmagap,sigmagapbig,sigmagnr,sigmapsf,sky,ssdistnr,ssmagnr,ssnrms,sumrat,xpos,ypos,zpclrcov,zpmed,htm10,htm13,htm16"
