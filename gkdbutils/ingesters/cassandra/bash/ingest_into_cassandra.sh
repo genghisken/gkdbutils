@@ -3,9 +3,9 @@
 # Import a cassandra table. The data must be split into chunks because of a memory
 # leak in the COPY command.
 
-if [ $# -ne 5 ]
+if [ $# -ne 6 ]
 then
-    echo "Usage: `basename $0` <keyspace> <table> <file prefix> <data directory> <n processes>"
+    echo "Usage: `basename $0` <keyspace> <table> <file prefix> <data directory> <n processes> <delay between batches (seconds)>"
     exit 1
 fi
 
@@ -14,6 +14,7 @@ export TABLE=$2
 export PREFIX=$3
 export DATADIR=$4
 export NPROCESSES=$5
+export BATCHDELAY=$6
 
 export PROCESSES_CLAUSE=""
 
@@ -57,5 +58,6 @@ do
     echo
     echo Loading file: $file
     cqlsh -e "COPY $KEYSPACE.$TABLE($COLS) FROM '$file' WITH HEADER = TRUE $PROCESSES_CLAUSE;"
+    sleep $BATCHDELAY
 done
 
