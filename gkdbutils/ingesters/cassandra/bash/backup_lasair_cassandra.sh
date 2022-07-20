@@ -37,6 +37,8 @@ echo `date '+%Y-%m-%dT%H:%M:%S'` Backup of $TABLE started
 /usr/bin/cqlsh -e "COPY $KEYSPACE.$TABLE TO '$FILE' WITH HEADER = TRUE;"
 echo `date '+%Y-%m-%dT%H:%M:%S'` Backup of $TABLE completed
 
+rm $CURRENT_BACKUP_CANDIDATES.gz
+rm $CURRENT_BACKUP_NONCANDIDATES.gz
 pigz $CURRENT_BACKUP_CANDIDATES
 pigz $CURRENT_BACKUP_NONCANDIDATES
 scp -p $CURRENT_BACKUP_CANDIDATES.gz $REMOTE_LOCATION/candidates.$DAY.gz
