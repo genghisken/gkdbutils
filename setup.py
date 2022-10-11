@@ -14,7 +14,7 @@ setup(
     description='A collection useful utilities - mostly related to astronomy',
     long_description=readme(),
     long_description_content_type="text/markdown",
-    version="0.0.14",
+    version="0.0.15",
     author='genghisken',
     author_email='ken.w.smith@gmail.com',
     license='MIT',
@@ -28,7 +28,7 @@ setup(
           'Topic :: Utilities',
     ],
     install_requires=[
-          'gkutils',
+          'gkutils>=0.2.16',
           'gkhtm',
       ],
     python_requires='>=3.6',

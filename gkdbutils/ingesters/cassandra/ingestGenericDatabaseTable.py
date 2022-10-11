@@ -2,7 +2,7 @@
 """Ingest Generic Database tables using multi-value insert statements and multiprocessing.
 
 Usage:
-  %s <configFile> <inputFile>... [--fileoffiles] [--table=<table>] [--tableDelimiter=<tableDelimiter>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--nfileprocesses=<nfileprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--columns=<columns>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>] [--fktable=<fktable>] [--fktablecols=<fktablecols>] [--fktablecoltypes=<fktablecoltypes>] [--fkfield=<fkfield>] [--fkfrominputdata=<fkfrominputdata>] [--racol=<racol>] [--deccol=<deccol>]
+  %s <configFile> <inputFile>... [--fileoffiles] [--table=<table>] [--tableDelimiter=<tableDelimiter>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--nfileprocesses=<nfileprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--columns=<columns>] [--types=<types>] [--skiphtm] [--nullValue=<nullValue>] [--fktable=<fktable>] [--fktablecols=<fktablecols>] [--fktablecoltypes=<fktablecoltypes>] [--fkfield=<fkfield>] [--fkfrominputdata=<fkfrominputdata>] [--racol=<racol>] [--deccol=<deccol>] [--flattenheader] [--headerlength=<headerlength>] [--headerdelimiter=<headerdelimiter>] [--headerprefix=<headerprefix>] [--rownumcolumn=<rownumcolumn>]
   %s (-h | --help)
   %s --version
 
@@ -30,16 +30,26 @@ Options:
   --fkfrominputdata=<fkfrominputdata>      Foreign key from input data. If set to filename it will use the datafile filename as the key [default: filename]
   --racol=<racol>                          Column that represents the RA [default: ra]
   --deccol=<deccol>                        Column that represents the Declination [default: dec]
+  --flattenheader                          Flatten a headed file.
+  --headerlength=<headerlength>            Does the file we are reading have a header [default: 0]
+  --headerdelimiter=<headerdelimiter>      Delimiter of header values [default: =]
+  --headerprefix=<headerprefix>            Header comment prefix [default: #]
+  --rownumcolumn=<rownumcolumn>            Generate a rownum column if one doesn't exist.
 
-Example:
+Examples:
   %s config_cassandra.yaml 01a58464o0535o.dph --fktable=/Users/kws/atlas/dophot/all_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlasdophot --racol=RA --deccol=Dec
 
   %s /home/kws/config_cassandra_atlas.yaml /home/kws/atlas/dophot/ingest/parallel_machine_ingest_test/remaining_batch/exposures_around_galactic_centre_10degrees_20210219_cleaned_hko_only_second_attempt_db1 --fileoffiles --fktable=/home/kws/atlas/dophot/all_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlas_detections --racol=RA --deccol=Dec --nprocesses=8 --nfileprocesses=4 --loglocationIngest=/home/kws/cassandra_ingest_logs/db1/cassandra_ingest/galactic_centre_hko/ --loglocationInsert=/home/kws/cassandra_ingest_logs/db1/cassandra_ingest/galactic_centre_hko/
 
   %s /Users/kws/config_cassandra.yaml /Users/kws/lasair/cassandra/load-old-data/noncandidates/file_of_files_to_ingest.txt --fileoffiles --types=str,float,float,int,int,float,float,float,int --table=test_noncandidates --tableDelimiter=, --nprocesses=11 --nfileprocesses=1 --skiphtm
+
+  %s /Users/kws/config_cassandra_atlas.yaml /tmp/ddc/atlas/diff/01a/59860/01a59860o0765o.ddc --table=atlas_ddc --columns=OBS,OBJ,FILT,MJD,TEXP,APFIT,MAGZPT,SKYMAG,MAG5SIG,PA,CLOUD,RAHEAD,DECHEAD,det_id,RA,Dec,mag,dmag,x,y,major,minor,phi,det,chi/N,Pvr,Ptr,Pmv,Pkn,Pno,Pbn,Pcr,Pxt,Psc,Dup,WPflx,dflx --types=str,str,str,float,float,float,float,float,float,float,float,float,float,int,float,float,float,float,float,float,float,float,float,int,float,float,float,float,float,float,float,float,float,float,int,float,float --flattenheader --headerlength=37 --racol=RA --deccol=Dec --rownumcolumn=det_id
+
+  %s /Users/kws/config_cassandra_atlas.yaml /tmp/inputddcfiles.txt --fileoffiles --table=atlas_ddc --columns=OBS,OBJ,FILT,MJD,TEXP,APFIT,MAGZPT,SKYMAG,MAG5SIG,PA,CLOUD,RAHEAD,DECHEAD,det_id,RA,Dec,mag,dmag,x,y,major,minor,phi,det,chi/N,Pvr,Ptr,Pmv,Pkn,Pno,Pbn,Pcr,Pxt,Psc,Dup,WPflx,dflx --types=str,str,str,float,float,float,float,float,float,float,float,float,float,int,float,float,float,float,float,float,float,float,float,int,float,float,float,float,float,float,float,float,float,float,int,float,float --flattenheader --headerlength=37 --racol=RA --deccol=Dec --rownumcolumn=det_id --nprocesses=8 --nfileprocesses=4
+
 """
 import sys
-__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
+__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
 from docopt import docopt
 import os, shutil, re
 from gkutils.commonutils import Struct, cleanOptions, readGenericDataFile, dbConnect, which, splitList, parallelProcess
@@ -180,7 +190,7 @@ def executeLoad(session, table, data, bundlesize = 1, types = None):
         try:
             sql = "insert into %s " % table
             # Force all keys to be lowercase and devoid of hyphens
-            sql += "(%s)" % ','.join(['%s' % k.lower().replace('-','') for k in keys])
+            sql += "(%s)" % ','.join(['%s' % k.lower().replace('-','').replace('/','') for k in keys])
 
             sql += " values "
             sql += ',\n'.join(['('+formatSpecifier+')' for x in range(len(dataChunk))])
@@ -298,7 +308,10 @@ def ingestData(options, inputFiles, fkDict = None):
         else:
             # Data is in plain text file. No schema present, so will need to provide
             # column types.
-            data = readGenericDataFile(f, delimiter=delimiter, useOrderedDict=True)
+            if options.flattenheader:
+                data = readGenericDataFile(f, delimiter=delimiter, useOrderedDict=True, skipLines=int(options.headerlength), appendheaderlines=True, headerdelimiter=options.headerdelimiter, headerprefix=options.headerprefix, rownumcolumn=options.rownumcolumn)
+            else:
+                data = readGenericDataFile(f, delimiter=delimiter, useOrderedDict=True, rownumcolumn=options.rownumcolumn)
 
         # 2021-07-29 KWS This is a bit inefficient, but trim the data down to specified columns if they are present.
         if options.columns:
@@ -411,7 +424,7 @@ def ingestDataMultiprocess(options, fkDict = None):
                 content = [filename.strip() for filename in content]
             files += content
 
-    print(files)
+    #print(files)
     nProcessors, fileSublist = splitList(files, bins = int(options.nfileprocesses), preserveOrder=True)
     
     print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
