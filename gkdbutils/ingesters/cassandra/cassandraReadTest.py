@@ -14,9 +14,11 @@ Options:
   --loglocation=<loglocation>           Log file location [default: /tmp/].
   --logprefix=<logprefix>               Log prefix [default: lcSearch].
 
+E.g.
+  %s ~/config.yaml ~/test_data/batch_1/unique_objects_with_a_lightcurve.txt --table=candidates --number=20000 --nprocesses=32
 """
 import sys
-__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0])
+__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
 from docopt import docopt
 from gkutils.commonutils import Struct, readGenericDataFile, cleanOptions, splitList, parallelProcess
 import csv
