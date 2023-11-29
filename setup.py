@@ -2,6 +2,7 @@ from setuptools import setup, find_packages
 import os
 
 moduleDirectory = os.path.dirname(os.path.realpath(__file__))
+exec(open(moduleDirectory + "/gkdbutils/__version__.py").read())
 
 
 def readme():
@@ -14,7 +15,7 @@ setup(
     description='A collection useful utilities - mostly related to astronomy',
     long_description=readme(),
     long_description_content_type="text/markdown",
-    version="0.0.15",
+    version=__version__,
     author='genghisken',
     author_email='ken.w.smith@gmail.com',
     license='MIT',
