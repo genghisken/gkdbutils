@@ -144,7 +144,25 @@ def boolToInteger(value):
         returnValue = 0
     return returnValue
 
+class GKDBException(Exception):
+    pass
 
+# 2023-11-27 GF execute_async has much better performance for the Lasair use case so
+#               make that the base implementation and have executeLoad call it for
+#               backwards compatibility
+def executeLoad(session, table, data, bundlesize = 1, types = None):
+    try:
+        futures = executeLoadAsync(session, table, data, bundlesize, types) 
+        for future in futures:
+            future.result()
+        return
+    except GKDBException as e:
+        print(e)
+        return 0
+
+# 2023-11-27 GF Use execute_load_async and return an array of futures
+#               Raise exceptions on error instead of returning 0
+#               Try to optimise the string processing a bit
 # Use INSERT statements so we can use multiprocessing
 # 2021-10-16 KWS Why do we need types?? This is because if we send the data as a CSV dict,
 #                then Cassandra will not know what to do with the data. A float != string.
@@ -152,30 +170,31 @@ def boolToInteger(value):
 #                We allow this option so that we can pass the data directly from CSV.
 #                An alternative approach is to modify readGenericDataFile so that it will
 #                cast during the load. Avro dictionaries are already typed.
-def executeLoad(session, table, data, bundlesize = 1, types = None):
+def executeLoadAsync(session, table, data, bundlesize = 1, types = None):
 
-    rowsUpdated = 0
+    # not used
+    #rowsUpdated = 0
 
     if len(data) == 0:
-        print('No data!')
-        return rowsUpdated
+        raise GKDBException("No data!")
 
     #if types is None:
     #    return rowsUpdated
 
     keys = list(data[0].keys())
 
+    # make a lower case and hyphen free version of keys
+    lckeys = ",".join([k.lower().replace('-','').replace('/','') for k in keys])
+
     typesDict = OrderedDict()
 
     if types is not None:
         if len(keys) != len(types):
-            print("Keys & Types mismatch")
-            return rowsUpdated
+            raise GKDBException("Keys & Types mismatch")
         i = 0
         for k in keys:
             typesDict[k] = types[i]
             i += 1
-
 
     formatSpecifier = ','.join(['%s' for i in keys])
 
@@ -185,16 +204,14 @@ def executeLoad(session, table, data, bundlesize = 1, types = None):
     else:
         bins, subList = splitList(data, bins = chunks, preserveOrder = True)
 
-
+    futures = []
     for dataChunk in subList:
         try:
-            sql = "insert into %s " % table
-            # Force all keys to be lowercase and devoid of hyphens
-            sql += "(%s)" % ','.join(['%s' % k.lower().replace('-','').replace('/','') for k in keys])
-
-            sql += " values "
-            sql += ',\n'.join(['('+formatSpecifier+')' for x in range(len(dataChunk))])
-            sql += ';'
+            sql = "insert into " + table \
+                + " (" + lckeys + ") " \
+                + " values " \
+                + ',\n'.join(['('+formatSpecifier+')' for x in range(len(dataChunk))]) \
+                + ';'
 
             values = []
 
@@ -214,15 +231,14 @@ def executeLoad(session, table, data, bundlesize = 1, types = None):
 
 
             #print(sql, tuple(values))
-            session.execute(sql, tuple(values))
-
+            futures.append(session.execute_async(sql, tuple(values)))
 
         except Exception as e:
             template = "An exception of type {0} occurred. Arguments:\n{1!r}"
             message = template.format(type(e).__name__, e.args)
             print(message)
 
-    return
+    return futures
 
 
 def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParameters):
