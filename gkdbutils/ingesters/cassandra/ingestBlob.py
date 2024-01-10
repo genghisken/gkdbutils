@@ -1,4 +1,5 @@
-"""Insert binary data (blob) into Cassandra.
+#!/usr/bin/env python
+"""Insert binary data (blob) into Cassandra. The inputFiles are headed text files containing the column as header, then the binary files (i.e. each file is a file of files).
 
 Usage:
   %s <configFile> <inputFiles>... [--table=<table>] [--types=<types>] [--blobcolumn=<blobcolumn>]
@@ -119,7 +120,6 @@ def executeLoad(options, session, data, bundlesize = 1):
                 for key in keys:
                     print(key)
                     if key == options.blobcolumn + 'image':
-                        print("PUKE")
                         value = row[key]
                         values.append(value)
                     else:
