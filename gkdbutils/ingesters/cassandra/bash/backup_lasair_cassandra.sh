@@ -47,7 +47,7 @@ cp -p $CURRENT_BACKUP_FORCEDPHOT.gz $PREVIOUS_BACKUP_FORCEDPHOT.gz
 rm $CURRENT_BACKUP_FORCEDPHOT.gz
 
 export TABLE=forcedphot
-export FILE=$CURRENT_BACKUP_NONCANDIDATES
+export FILE=$CURRENT_BACKUP_FORCEDPHOT
 echo `date '+%Y-%m-%dT%H:%M:%S'` Backup of $TABLE started
 /usr/bin/cqlsh -e "COPY $KEYSPACE.$TABLE TO '$FILE' WITH HEADER = TRUE;"
 echo `date '+%Y-%m-%dT%H:%M:%S'` Backup of $TABLE completed
