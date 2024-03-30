@@ -31,6 +31,7 @@ setup(
     install_requires=[
           'gkutils>=0.2.16',
           'gkhtm',
+          'pandas',
       ],
     python_requires='>=3.6',
     entry_points = {

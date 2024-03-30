@@ -118,7 +118,6 @@ def executeLoad(conn, table, data, bundlesize = 100, nullMethod = 'nullValueNULL
             values = []
             for row in dataChunk:
                 for key in keys:
-                    print(row[key])
                     values.append(eval(nullMethod)(boolToInteger(row[key])))
 
             cursor.execute(sql, tuple(values))
@@ -160,7 +159,7 @@ def ingestData(options, inputFiles):
 
     import yaml
     with open(options.configFile) as yaml_file:
-        config = yaml.load(yaml_file)
+        config = yaml.safe_load(yaml_file)
 
     username = config['databases']['local']['username']
     password = config['databases']['local']['password']
