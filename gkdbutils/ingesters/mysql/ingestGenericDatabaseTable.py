@@ -2,7 +2,7 @@
 """Ingest Generic Database tables using multi-value insert statements and multiprocessing.
 
 Usage:
-  %s <configFile> <inputFile>... [--table=<table>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>]
+  %s <configFile> <inputFile>... [--table=<table>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--skiphtm] [--fileoffiles] [--header=<header>] [--usepandas] [--nullmethod=<nullmethod>]
   %s (-h | --help)
   %s --version
 
@@ -16,9 +16,14 @@ Options:
   --logprefixInsert=<logprefixInsert>      Log prefix [default: inserter]
   --loglocationIngest=<loglocationIngest>  Log file location [default: /tmp/]
   --logprefixIngest=<logprefixIngest>      Log prefix [default: ingester]
+  --skiphtm                                Don't bother calculating HTMs. They're either already done or we don't need them. (I.e. not spatially indexed data.)
+  --fileoffiles                            Read the CONTENTS of the inputFiles to get the filenames. Allows many thousands of files to be read, avoiding command line constraints.
+  --header=<header>                        Field names for non-headed CSV files (comma separated, no spaces).
+  --usepandas                              Use Pandas to read the CSV. This can deal with quoted, delimited data, which readGenericDataFile can't do.
+  --nullmethod=<nullmethod>                Use this method to set null values (nullValueNull | nullValue | nullValueN) [default: nullValueNull].
 
 Example:
-   %s /tmp/bile.csv.gz
+   %s ~/config.yaml tcs_transient_reobservations_pandas.csv --table=tcs_transient_reobservations --skiphtm --header=`cat tcs_transient_reobservations_columns.csv` --nullmethod=nullValueN --usepandas
 
 """
 import sys
@@ -30,6 +35,7 @@ from datetime import datetime
 from datetime import timedelta
 import subprocess
 import gzip
+import pandas as pd
 
 
 def nullValue(value):
@@ -47,6 +53,17 @@ def nullValueNULL(value):
       returnValue = value.strip()
 
    return returnValue
+
+# 2024-03-29 KWS Added in case Pandas has removed the escape character from \N
+def nullValueN(value):
+    returnValue = None
+
+    if value and (value == 'N' or value == 'NULL'):
+       returnValue = None
+    elif value and value.strip():
+       returnValue = value.strip()
+
+    return returnValue
 
 def boolToInteger(value):
     returnValue = value
@@ -70,7 +87,7 @@ def calculate_htm_ids_bulk(generateHtmidBulk, htmLevel, tempRaDecFile):
 
 
 # Use INSERT statements so we can use multiprocessing
-def executeLoad(conn, table, data, bundlesize = 100):
+def executeLoad(conn, table, data, bundlesize = 100, nullMethod = 'nullValueNULL'):
     import MySQLdb
 
     rowsUpdated = 0
@@ -101,7 +118,8 @@ def executeLoad(conn, table, data, bundlesize = 100):
             values = []
             for row in dataChunk:
                 for key in keys:
-                    values.append(nullValueNULL(boolToInteger(row[key])))
+                    print(row[key])
+                    values.append(eval(nullMethod)(boolToInteger(row[key])))
 
             cursor.execute(sql, tuple(values))
 
@@ -125,7 +143,7 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     conn = dbConnect(db['hostname'], db['username'], db['password'], db['database'], quitOnError = True)
 
     # This is in the worker function
-    objectsForUpdate = executeLoad(conn, options.table, objectListFragment, int(options.bundlesize))
+    objectsForUpdate = executeLoad(conn, options.table, objectListFragment, int(options.bundlesize), nullMethod=options.nullmethod)
 
     print("Process complete.")
     conn.close()
@@ -134,10 +152,11 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     return 0
 
 def ingestData(options, inputFiles):
-    generateHtmidBulk = which('generate_htmid_bulk')
-    if generateHtmidBulk is None:
-        sys.stderr.write("Can't find the generate_htmid_bulk executable, so cannot continue.\n")
-        exit(1)
+    if not options.skiphtm:
+        generateHtmidBulk = which('generate_htmid_bulk')
+        if generateHtmidBulk is None:
+            sys.stderr.write("Can't find the generate_htmid_bulk executable, so cannot continue.\n")
+            exit(1)
 
     import yaml
     with open(options.configFile) as yaml_file:
@@ -166,27 +185,42 @@ def ingestData(options, inputFiles):
         else:
             f = inputFile
     
-        data = readGenericDataFile(f, delimiter=',', useOrderedDict=True)
+        if options.header:
+            if options.usepandas:
+                # Read the lot as strings. Let MySQL do the conversion. Assume quoted strings.
+                # For a MariaDB CSV file, the nulls will be \N, but the escape char will convert to N.
+                # That's OK. We'll live with it for the time being.
+                df = pd.read_csv(f, names=options.header.split(','), dtype='string', quotechar='"', sep=',', escapechar='\\', keep_default_na=False)
+                data = df.to_dict('records')
+            else:
+                data = readGenericDataFile(f, delimiter=',', fieldNames = options.header.split(','), useOrderedDict=True)
+        else:
+            if options.usepandas:
+                df = pd.read_csv(f, dtype='string', quotechar='"', sep=',', escapechar='\\', keep_default_na=False)
+                data = df.to_dict('records')
+            else:
+                data = readGenericDataFile(f, delimiter=',', useOrderedDict=True)
         pid = os.getpid()
     
-        tempRADecFile = '/tmp/' + os.path.basename(inputFile) + 'radec_' + str(pid)
-        tempLoadFile = '/tmp/' + os.path.basename(inputFile) + '_' + str(pid) + '.csv'
+        if not options.skiphtm:
+            tempRADecFile = '/tmp/' + os.path.basename(inputFile) + 'radec_' + str(pid)
+            tempLoadFile = '/tmp/' + os.path.basename(inputFile) + '_' + str(pid) + '.csv'
     
-        with open(tempRADecFile, 'wb') as f:
-            for row in data:
-                f.write('%s %s\n' % (row['ra'], row['dec']))
+            with open(tempRADecFile, 'wb') as f:
+                for row in data:
+                    f.write('%s %s\n' % (row['ra'], row['dec']))
     
-        htm10IDs = calculate_htm_ids_bulk(generateHtmidBulk, 10, tempRADecFile)
-        htm13IDs = calculate_htm_ids_bulk(generateHtmidBulk, 13, tempRADecFile)
-        htm16IDs = calculate_htm_ids_bulk(generateHtmidBulk, 16, tempRADecFile)
+            htm10IDs = calculate_htm_ids_bulk(generateHtmidBulk, 10, tempRADecFile)
+            htm13IDs = calculate_htm_ids_bulk(generateHtmidBulk, 13, tempRADecFile)
+            htm16IDs = calculate_htm_ids_bulk(generateHtmidBulk, 16, tempRADecFile)
     
-        os.remove(tempRADecFile)
+            os.remove(tempRADecFile)
     
-        for i in range(len(data)):
-            # Add the HTM IDs to the data
-            data[i]['htm10ID'] = htm10IDs[i]
-            data[i]['htm13ID'] = htm13IDs[i]
-            data[i]['htm16ID'] = htm16IDs[i]
+            for i in range(len(data)):
+                # Add the HTM IDs to the data
+                data[i]['htm10ID'] = htm10IDs[i]
+                data[i]['htm13ID'] = htm13IDs[i]
+                data[i]['htm16ID'] = htm16IDs[i]
     
     
     
@@ -233,6 +267,9 @@ def main(argv = None):
 
     # Use utils.Struct to convert the dict into an object for compatibility with old optparse code.
     options = Struct(**opts)
+    if options.nullmethod not in ('nullValueNULL','nullValue','nullValueN'):
+        print('nullmethod must be nullValueNULL | nullValue | nullValueN')
+        exit(1)
     ingestDataMultiprocess(options)
     #ingestData(options)
 
