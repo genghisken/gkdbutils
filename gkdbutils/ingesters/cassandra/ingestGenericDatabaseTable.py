@@ -184,7 +184,10 @@ def executeLoadAsync(session, table, data, bundlesize = 1, types = None):
     keys = list(data[0].keys())
 
     # make a lower case and hyphen free version of keys
-    lckeys = ",".join([k.lower().replace('-','').replace('/','') for k in keys])
+    #lckeys = ",".join([k.lower().replace('-','').replace('/','') for k in keys])
+
+    # 2024-09-04 KWS Preserve case, but exclude minus sign and slash from keys.
+    lckeys = ",".join(['"' + k.replace('-','').replace('/','') + '"' for k in keys])
 
     typesDict = OrderedDict()
 
