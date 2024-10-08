@@ -170,7 +170,7 @@ def ingestData(options, inputFiles):
         print("Ingesting %s" % inputFile)
         if 'gz' in inputFile:
             # It's probably gzipped
-            f = gzip.open(inputFile, 'rb')
+            f = gzip.open(inputFile, 'rt', encoding='utf-8')
             print(type(f).__name__)
         else:
             f = inputFile
@@ -229,17 +229,31 @@ def workerIngest(num, db, objectListFragment, dateAndTime, firstPass, miscParame
 
     return 0
 
+
 def ingestDataMultiprocess(options):
 
     currentDate = datetime.now().strftime("%Y:%m:%d:%H:%M:%S")
     (year, month, day, hour, min, sec) = currentDate.split(':')
     dateAndTime = "%s%s%s_%s%s%s" % (year, month, day, hour, min, sec)
 
-    nProcessors, fileSublist = splitList(options.inputFile, bins = int(options.nprocesses), preserveOrder=True)
-    
+    # Read the contents of the input file(s) to get the filenames to process.
+    files = options.inputFile
+
+    if options.fileoffiles:
+        files = []
+        for f in options.inputFile:
+            with open(f) as fp:
+                content = fp.readlines()
+                content = [filename.strip() for filename in content]
+            files += content
+
+    #print(files)
+    nProcessors, fileSublist = splitList(files, bins = int(options.nprocesses), preserveOrder=True)
+
     print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
     parallelProcess([], dateAndTime, nProcessors, fileSublist, workerIngest, miscParameters = [options], drainQueues = False)
     print("%s Done Parallel Processing" % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
+
 
 
 def main(argv = None):
