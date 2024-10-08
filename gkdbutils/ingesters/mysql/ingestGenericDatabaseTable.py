@@ -190,7 +190,6 @@ def ingestData(options, inputFiles):
                 data = df.to_dict('records')
             else:
                 data = readGenericDataFile(f, delimiter=',', useOrderedDict=True, skipLines = int(options.skiplines))
-                print(data[0])
         pid = os.getpid()
     
         if not options.skiphtm:
