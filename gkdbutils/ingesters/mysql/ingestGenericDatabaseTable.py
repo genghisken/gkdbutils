@@ -2,7 +2,7 @@
 """Ingest Generic Database tables using multi-value insert statements and multiprocessing.
 
 Usage:
-  %s <configFile> <inputFile>... [--table=<table>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--skiphtm] [--fileoffiles] [--header=<header>] [--usepandas] [--nullmethod=<nullmethod>]
+  %s <configFile> <inputFile>... [--table=<table>] [--bundlesize=<bundlesize>] [--nprocesses=<nprocesses>] [--loglocationInsert=<loglocationInsert>] [--logprefixInsert=<logprefixInsert>] [--loglocationIngest=<loglocationIngest>] [--logprefixIngest=<logprefixIngest>] [--skiphtm] [--fileoffiles] [--header=<header>] [--usepandas] [--nullmethod=<nullmethod>] [--skiplines=<skiplines>]
   %s (-h | --help)
   %s --version
 
@@ -20,7 +20,8 @@ Options:
   --fileoffiles                            Read the CONTENTS of the inputFiles to get the filenames. Allows many thousands of files to be read, avoiding command line constraints.
   --header=<header>                        Field names for non-headed CSV files (comma separated, no spaces).
   --usepandas                              Use Pandas to read the CSV. This can deal with quoted, delimited data, which readGenericDataFile can't do.
-  --nullmethod=<nullmethod>                Use this method to set null values (nullValueNull | nullValue | nullValueN) [default: nullValueNull].
+  --nullmethod=<nullmethod>                Use this method to set null values (nullValueNULL | nullValue | nullValueN) [default: nullValueNULL].
+  --skiplines=<skiplines>                  Skip this number of lines at the beginning of the file (e.g. comments) [default: 0].
 
 Example:
    %s ~/config.yaml tcs_transient_reobservations_pandas.csv --table=tcs_transient_reobservations --skiphtm --header=`cat tcs_transient_reobservations_columns.csv` --nullmethod=nullValueN --usepandas
@@ -37,6 +38,9 @@ import subprocess
 import gzip
 import pandas as pd
 
+# 2024-10-04 KWS Replaced my old call to the bulk HTM ID executable with the python/swig version.
+from gkhtm._gkhtm import htmIDBulk
+
 
 def nullValue(value):
    returnValue = '\\N'
@@ -47,10 +51,14 @@ def nullValue(value):
    return returnValue
 
 def nullValueNULL(value):
+   #print ("VALUE = %s, TYPE = %s" % (value, type(value)))
    returnValue = None
 
    if value and value.strip():
       returnValue = value.strip()
+
+   if returnValue == 'null':
+      returnValue = None
 
    return returnValue
 
@@ -73,18 +81,6 @@ def boolToInteger(value):
         returnValue = '0'
     return returnValue
 
-def calculate_htm_ids_bulk(generateHtmidBulk, htmLevel, tempRaDecFile):
-    # Call the C++ HTM ID calculator
-    htmIDs = []
-
-    p = subprocess.Popen([generateHtmidBulk, str(htmLevel), tempRaDecFile], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    output, errors = p.communicate()
-
-    if output.strip():
-        htmIDs = output.strip().split('\n')
-
-    return htmIDs
-
 
 # Use INSERT statements so we can use multiprocessing
 def executeLoad(conn, table, data, bundlesize = 100, nullMethod = 'nullValueNULL'):
@@ -106,28 +102,28 @@ def executeLoad(conn, table, data, bundlesize = 100, nullMethod = 'nullValueNULL
 
 
     for dataChunk in subList:
-        try:
-            cursor = conn.cursor(MySQLdb.cursors.DictCursor)
+        if len(dataChunk) > 0:
+            try:
+                cursor = conn.cursor(MySQLdb.cursors.DictCursor)
 
-            sql = "insert ignore into %s " % table
-            sql += "(%s)" % ','.join(['`%s`' % k for k in keys])
-            sql += " values "
-            sql += ',\n'.join(['('+formatSpecifier+')' for x in range(len(dataChunk))])
-            sql += ';'
+                sql = "insert ignore into %s " % table
+                sql += "(%s)" % ','.join(['`%s`' % k for k in keys])
+                sql += " values "
+                sql += ',\n'.join(['('+formatSpecifier+')' for x in range(len(dataChunk))])
+                sql += ';'
 
-            values = []
-            for row in dataChunk:
-                for key in keys:
-                    values.append(eval(nullMethod)(boolToInteger(row[key])))
+                values = []
+                for row in dataChunk:
+                    for key in keys:
+                        values.append(eval(nullMethod)(boolToInteger(row[key])))
 
-            cursor.execute(sql, tuple(values))
+                cursor.execute(sql, tuple(values))
 
-            rowsUpdated = cursor.rowcount
-            cursor.close ()
+                rowsUpdated = cursor.rowcount
+                cursor.close ()
 
-        except MySQLdb.Error as e:
-            print(cursor._last_executed)
-            print("Error %d: %s" % (e.args[0], e.args[1]))
+            except MySQLdb.Error as e:
+                print(e)
 
         conn.commit()
 
@@ -151,11 +147,6 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     return 0
 
 def ingestData(options, inputFiles):
-    if not options.skiphtm:
-        generateHtmidBulk = which('generate_htmid_bulk')
-        if generateHtmidBulk is None:
-            sys.stderr.write("Can't find the generate_htmid_bulk executable, so cannot continue.\n")
-            exit(1)
 
     import yaml
     with open(options.configFile) as yaml_file:
@@ -192,48 +183,40 @@ def ingestData(options, inputFiles):
                 df = pd.read_csv(f, names=options.header.split(','), dtype='string', quotechar='"', sep=',', escapechar='\\', keep_default_na=False)
                 data = df.to_dict('records')
             else:
-                data = readGenericDataFile(f, delimiter=',', fieldNames = options.header.split(','), useOrderedDict=True)
+                data = readGenericDataFile(f, delimiter=',', fieldNames = options.header.split(','), useOrderedDict=True, skipLines = int(options.skiplines))
         else:
             if options.usepandas:
                 df = pd.read_csv(f, dtype='string', quotechar='"', sep=',', escapechar='\\', keep_default_na=False)
                 data = df.to_dict('records')
             else:
-                data = readGenericDataFile(f, delimiter=',', useOrderedDict=True)
+                data = readGenericDataFile(f, delimiter=',', useOrderedDict=True, skipLines = int(options.skiplines))
+                print(data[0])
         pid = os.getpid()
     
         if not options.skiphtm:
-            tempRADecFile = '/tmp/' + os.path.basename(inputFile) + 'radec_' + str(pid)
-            tempLoadFile = '/tmp/' + os.path.basename(inputFile) + '_' + str(pid) + '.csv'
     
-            with open(tempRADecFile, 'wb') as f:
-                for row in data:
-                    f.write('%s %s\n' % (row['ra'], row['dec']))
-    
-            htm10IDs = calculate_htm_ids_bulk(generateHtmidBulk, 10, tempRADecFile)
-            htm13IDs = calculate_htm_ids_bulk(generateHtmidBulk, 13, tempRADecFile)
-            htm16IDs = calculate_htm_ids_bulk(generateHtmidBulk, 16, tempRADecFile)
-    
-            os.remove(tempRADecFile)
-    
+            coords = [[float(x['ra']), float(x['dec'])] for x in data]
+            htm10IDs = htmIDBulk(10, coords)
+            htm13IDs = htmIDBulk(13, coords)
+            htm16IDs = htmIDBulk(16, coords)
+
             for i in range(len(data)):
                 # Add the HTM IDs to the data
-                data[i]['htm10ID'] = htm10IDs[i]
-                data[i]['htm13ID'] = htm13IDs[i]
-                data[i]['htm16ID'] = htm16IDs[i]
-    
-    
-    
+                data[i]['htm10ID'] = str(htm10IDs[i])
+                data[i]['htm13ID'] = str(htm13IDs[i])
+                data[i]['htm16ID'] = str(htm16IDs[i])
+
         nprocesses = int(options.nprocesses)
-    
+
         if len(data) > 0:
             nProcessors, listChunks = splitList(data, bins = nprocesses, preserveOrder=True)
-    
+
             print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
             parallelProcess(db, dateAndTime, nProcessors, listChunks, workerInsert, miscParameters = [options], drainQueues = False)
             print("%s Done Parallel Processing" % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
 
 
-    
+
 def workerIngest(num, db, objectListFragment, dateAndTime, firstPass, miscParameters):
     """thread worker function"""
     # Redefine the output to be a log file.
