@@ -29,7 +29,7 @@ setup(
           'Topic :: Utilities',
     ],
     install_requires=[
-          'gkutils>=0.2.16',
+          'gkutils>=0.3.4',
           'gkhtm',
           'pandas',
       ],

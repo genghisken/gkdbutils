@@ -47,9 +47,11 @@ Examples:
 
   %s /Users/kws/config_cassandra_atlas.yaml /tmp/inputddcfiles.txt --fileoffiles --table=atlas_ddc --columns=OBS,OBJ,FILT,MJD,TEXP,APFIT,MAGZPT,SKYMAG,MAG5SIG,PA,CLOUD,RAHEAD,DECHEAD,det_id,RA,Dec,mag,dmag,x,y,major,minor,phi,det,chi/N,Pvr,Ptr,Pmv,Pkn,Pno,Pbn,Pcr,Pxt,Psc,Dup,WPflx,dflx --types=str,str,str,float,float,float,float,float,float,float,float,float,float,int,float,float,float,float,float,float,float,float,float,int,float,float,float,float,float,float,float,float,float,float,int,float,float --flattenheader --headerlength=37 --racol=RA --deccol=Dec --rownumcolumn=det_id --nprocesses=8 --nfileprocesses=4
 
+  %s /home/kws/config_cassandra_atlas.yaml /data/db6data/catalogues/dophot/01a/dph_files_to_ingest.txt --fileoffiles --fktable=/home/atls/daily_exposures/atlas_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlasdophot --racol=RA --deccol=Dec --nprocesses=8 --nfileprocesses=4 --loglocationIngest=/db6/tc_logs/cassandra/ --loglocationInsert=/db6/tc_logs/cassandra/
+
 """
 import sys
-__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
+__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
 from docopt import docopt
 import os, shutil, re
 from gkutils.commonutils import Struct, cleanOptions, readGenericDataFile, dbConnect, which, splitList, parallelProcess
@@ -170,7 +172,8 @@ def executeLoad(session, table, data, bundlesize = 1, types = None):
 #                We allow this option so that we can pass the data directly from CSV.
 #                An alternative approach is to modify readGenericDataFile so that it will
 #                cast during the load. Avro dictionaries are already typed.
-def executeLoadAsync(session, table, data, bundlesize = 1, types = None):
+# 2024-12-19 KWS Introduced a client timeout. See https://github.com/lsst-uk/lasair-lsst/issues/208
+def executeLoadAsync(session, table, data, bundlesize = 1, types = None, clientTimeout = 30):
 
     # not used
     #rowsUpdated = 0
@@ -234,7 +237,7 @@ def executeLoadAsync(session, table, data, bundlesize = 1, types = None):
 
 
             #print(sql, tuple(values))
-            futures.append(session.execute_async(sql, tuple(values)))
+            futures.append(session.execute_async(sql, tuple(values), timeout=clientTimeout))
 
         except Exception as e:
             template = "An exception of type {0} occurred. Arguments:\n{1!r}"
@@ -243,6 +246,75 @@ def executeLoadAsync(session, table, data, bundlesize = 1, types = None):
 
     return futures
 
+
+def executeLoadSync(session, table, data, bundlesize = 1, types = None):
+
+    if len(data) == 0:
+        raise GKDBException("No data!")
+
+    rowsUpdated = 0
+
+    if len(data) == 0:
+        return rowsUpdated
+
+    if types is None:
+        return rowsUpdated
+
+    keys = list(data[0].keys())
+
+    # 2024-09-04 KWS Preserve case, but exclude minus sign and slash from keys.
+    lckeys = ",".join(['"' + k.replace('-','').replace('/','') + '"' for k in keys])
+
+    if len(keys) != len(types):
+        print("Keys & Types mismatch")
+        return rowsUpdated
+
+    typesDict = OrderedDict()
+
+    i = 0
+    for k in keys:
+        typesDict[k] = types[i]
+        i += 1
+
+    print(keys)
+    print(types)
+
+    formatSpecifier = ','.join(['%s' for i in keys])
+
+    chunks = int(1.0 * len(data) / bundlesize + 0.5)
+    if chunks == 0:
+        subList = [data]
+    else:
+        bins, subList = splitList(data, bins = chunks, preserveOrder = True)
+
+
+    for dataChunk in subList:
+        try:
+            sql = "insert into " + table \
+                + " (" + lckeys + ") " \
+                + " values " \
+                + ',\n'.join(['('+formatSpecifier+')' for x in range(len(dataChunk))]) \
+                + ';'
+
+            values = []
+            for row in dataChunk:
+                for key in keys:
+                    value = nullValueNULL(boolToInteger(row[key]))
+                    if value is not None:
+                        value = eval(typesDict[key])(value)
+                    values.append(value)
+
+            #print(sql)
+            session.execute(sql, tuple(values))
+
+
+        except Exception as e:
+            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+            message = template.format(type(e).__name__, e.args)
+            print(message)
+            #print "Error %d: %s" % (e.args[0], e.args[1])
+
+    return
 
 def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParameters):
     """thread worker function"""
@@ -254,6 +326,10 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     sys.stdout = open('%s%s_%s_%d_%d.log' % (options.loglocationInsert, options.logprefixInsert, dateAndTime, pid, num), "w")
     cluster = Cluster(db['hostname'])
     session = cluster.connect()
+
+    # 2024-10-31 KWS Set the timeout to be 5 mins. (Default is 10 seconds.)
+    session.default_timeout = 300
+
     session.set_keyspace(db['keyspace']) 
 
     combinedTypes = options.types
