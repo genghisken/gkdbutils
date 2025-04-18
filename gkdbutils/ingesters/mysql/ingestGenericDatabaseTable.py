@@ -25,10 +25,11 @@ Options:
 
 Example:
    %s ~/config.yaml tcs_transient_reobservations_pandas.csv --table=tcs_transient_reobservations --skiphtm --header=`cat tcs_transient_reobservations_columns.csv` --nullmethod=nullValueN --usepandas
+   %s ~/config_cat.yaml ~/catalogues/gaia/gaia_catalogue_files.txt --fileoffiles --table=tcs_cat_gaia_dr3 --nprocesses=32 --loglocationInsert=/tmp/ --logprefixInsert=inserter --loglocationIngest=/tmp/ --logprefixIngest=ingester --skiplines=1000
 
 """
 import sys
-__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
+__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
 from docopt import docopt
 import os, shutil, re
 from gkutils.commonutils import Struct, cleanOptions, readGenericDataFile, dbConnect, which, splitList, parallelProcess
@@ -75,9 +76,9 @@ def nullValueN(value):
 
 def boolToInteger(value):
     returnValue = value
-    if value == 'true':
+    if value.lower() == 'true':
         returnValue = '1'
-    if value == 'false':
+    if value.lower() == 'false':
         returnValue = '0'
     return returnValue
 
