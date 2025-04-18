@@ -11,7 +11,7 @@ Options:
   --version                                Show version.
   --table=<table>                          Target table name.
   --bundlesize=<bundlesize>                Group inserts into bundles of specified size [default: 100]
-  --nprocesses=<nprocesses>                Number of processes to use - warning - beware of opening too many processes [default: 8]
+  --nprocesses=<nprocesses>                Number of processes to use - warning - beware of opening too many processes. Assume nprocess x nprocess [default: 8]
   --loglocationInsert=<loglocationInsert>  Log file location [default: /tmp/]
   --logprefixInsert=<logprefixInsert>      Log prefix [default: inserter]
   --loglocationIngest=<loglocationIngest>  Log file location [default: /tmp/]
@@ -135,7 +135,9 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     """thread worker function"""
     # Redefine the output to be a log file.
     options = miscParameters[0]
-    sys.stdout = open('%s%s_%s_%d.log' % (options.loglocationInsert, options.logprefixInsert, dateAndTime, num), "w")
+    # 2025-04-18 KWS Need to have PID otherwise the insert logs get overwritten.
+    parentIngestId = miscParameters[1]
+    sys.stdout = open('%s%s_%s_%d_%d.log' % (options.loglocationInsert, options.logprefixInsert, dateAndTime, parentIngestId, num), "w")
     conn = dbConnect(db['hostname'], db['username'], db['password'], db['database'], quitOnError = True)
 
     # This is in the worker function
@@ -147,7 +149,7 @@ def workerInsert(num, db, objectListFragment, dateAndTime, firstPass, miscParame
 
     return 0
 
-def ingestData(options, inputFiles):
+def ingestData(options, inputFiles, inserternum = 0):
 
     import yaml
     with open(options.configFile) as yaml_file:
@@ -212,7 +214,8 @@ def ingestData(options, inputFiles):
             nProcessors, listChunks = splitList(data, bins = nprocesses, preserveOrder=True)
 
             print("%s Parallel Processing..." % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
-            parallelProcess(db, dateAndTime, nProcessors, listChunks, workerInsert, miscParameters = [options], drainQueues = False)
+            # 2025-04-18 KWS Added inserter process number
+            parallelProcess(db, dateAndTime, nProcessors, listChunks, workerInsert, miscParameters = [options, inserternum], drainQueues = False)
             print("%s Done Parallel Processing" % (datetime.now().strftime("%Y:%m:%d:%H:%M:%S")))
 
 
@@ -224,7 +227,7 @@ def workerIngest(num, db, objectListFragment, dateAndTime, firstPass, miscParame
     sys.stdout = open('%s%s_%s_%d.log' % (options.loglocationIngest, options.logprefixIngest, dateAndTime, num), "w")
 
     # This is in the worker function
-    objectsForUpdate = ingestData(options, objectListFragment)
+    objectsForUpdate = ingestData(options, objectListFragment, inserternum = num)
 
     print("Process complete.")
 
