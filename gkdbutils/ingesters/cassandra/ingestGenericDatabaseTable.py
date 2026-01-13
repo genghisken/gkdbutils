@@ -49,9 +49,11 @@ Examples:
 
   %s /home/kws/config_cassandra_atlas.yaml /data/db6data/catalogues/dophot/01a/dph_files_to_ingest.txt --fileoffiles --fktable=/home/atls/daily_exposures/atlas_co_exposures.tst --fkfield=expname --fktablecols=mjd,expname,exptime,filter,mag5sig --types=float,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float --fktablecoltypes=float,str,float,str,float --table=atlasdophot --racol=RA --deccol=Dec --nprocesses=8 --nfileprocesses=4 --loglocationIngest=/db6/tc_logs/cassandra/ --loglocationInsert=/db6/tc_logs/cassandra/
 
+  %s ~/config_cassandra_lasair.yaml ~/Downloads/mpc3.csv --nprocesses=1 --skiphtm --tableDelimiter=, --table=mpc_orbits --types=int,str,str,str,str,long,long,int,int,int,float,float,int,int,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,float,long
+
 """
 import sys
-__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
+__doc__ = __doc__ % (sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0], sys.argv[0])
 from docopt import docopt
 import os, shutil, re
 from gkutils.commonutils import Struct, cleanOptions, readGenericDataFile, dbConnect, which, splitList, parallelProcess
