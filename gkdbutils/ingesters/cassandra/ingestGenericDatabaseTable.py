@@ -278,8 +278,8 @@ def executeLoadSync(session, table, data, bundlesize = 1, types = None):
         typesDict[k] = types[i]
         i += 1
 
-    print(keys)
-    print(types)
+    #print(keys)
+    #print(types)
 
     formatSpecifier = ','.join(['%s' for i in keys])
 
